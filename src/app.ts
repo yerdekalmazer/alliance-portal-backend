@@ -45,15 +45,26 @@ app.set('trust proxy', 1);
 // ---------------------------------------------
 // CORS - MUST be before other middlewares/routes
 // ---------------------------------------------
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
+function normalizeOrigin(origin: string): string {
+  const trimmed = origin.trim();
+  // remove trailing slash and lowercase
+  return trimmed.endsWith('/') ? trimmed.slice(0, -1).toLowerCase() : trimmed.toLowerCase();
+}
+
+const defaultDevOrigins = [
   'http://localhost:3000',
   'http://localhost:5173', // Vite default
   'http://localhost:5174', // Vite alternative
   'http://localhost:8080',
   'http://127.0.0.1:5173', // Alternative localhost
   'http://127.0.0.1:5174',
-  'https://alliance-portal-thtd.onrender.com'
 ];
+
+const allowedOriginsEnv = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(normalizeOrigin)
+  : defaultDevOrigins.map(normalizeOrigin);
+
+const allowedOriginsSet = new Set<string>(allowedOriginsEnv);
 
 const isDevelopment = process.env.NODE_ENV === 'development';
 
@@ -63,7 +74,8 @@ const corsOptions: CorsOptions = {
     if (isDevelopment && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
       return callback(null, true);
     }
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    const normalized = normalizeOrigin(origin);
+    if (allowedOriginsSet.has(normalized)) {
       return callback(null, true);
     }
     console.warn(`CORS blocked origin: ${origin}`);
