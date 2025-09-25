@@ -52,6 +52,7 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
   'http://localhost:8080',
   'http://127.0.0.1:5173', // Alternative localhost
   'http://127.0.0.1:5174',
+  'https://alliance-portal-thtd.onrender.com'
 ];
 
 const isDevelopment = process.env.NODE_ENV === 'development';
