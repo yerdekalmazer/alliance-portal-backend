@@ -143,6 +143,9 @@ router.put('/:id', authMiddleware, requireAllianceOrAdmin, casesController.updat
 router.put('/:id/admin-message', authMiddleware, requireAdmin, casesController.updateCaseAdminMessage);
 router.delete('/:id', authMiddleware, requireAdmin, casesController.deleteCase);
 
+// Test endpoint for service role
+router.get('/test-service-role', casesController.testServiceRole);
+
 // Case statistics
 router.get('/:id/stats', casesController.getCaseStats);
 router.get('/:id/analytics', casesController.getCaseAnalytics);

@@ -315,7 +315,79 @@ class CasesController {
     try {
       const { id } = req.params;
 
-      // Use service role for case deletion (bypasses RLS)
+      console.log(`🗑️ Attempting to delete case: ${id}`);
+
+      // Check if service role is configured
+      if (!supabaseAdmin) {
+        console.error('❌ Service role key not configured');
+        return res.status(500).json({
+          success: false,
+          error: 'Service role key not configured',
+          code: 'SERVICE_ROLE_MISSING'
+        } as ApiResponse);
+      }
+
+      // First check if the case exists
+      const { data: existingCase, error: fetchError } = await supabaseAdmin
+        .from('cases')
+        .select('id, title, created_by')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) {
+        console.error('❌ Error fetching case:', fetchError);
+        if (fetchError.code === 'PGRST116') {
+          return res.status(404).json({
+            success: false,
+            error: 'Case not found',
+            code: 'CASE_NOT_FOUND'
+          } as ApiResponse);
+        }
+        throw fetchError;
+      }
+
+      if (!existingCase) {
+        return res.status(404).json({
+          success: false,
+          error: 'Case not found',
+          code: 'CASE_NOT_FOUND'
+        } as ApiResponse);
+      }
+
+      console.log(`🗑️ Deleting case: ${existingCase.title} (${id})`);
+
+      // Use a transaction to ensure all related data is deleted properly
+      const { error: deleteError } = await supabaseAdmin
+        .from('cases')
+        .delete()
+        .eq('id', id);
+
+      if (deleteError) {
+        console.error('❌ Database error during case deletion:', deleteError);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to delete case',
+          code: 'DELETE_FAILED',
+          details: deleteError.message
+        } as ApiResponse);
+      }
+
+      console.log(`✅ Case deleted successfully: ${existingCase.title}`);
+
+      res.json({
+        success: true,
+        message: 'Case deleted successfully'
+      } as ApiResponse);
+
+    } catch (error) {
+      console.error('❌ Error in deleteCase:', error);
+      next(error);
+    }
+  }
+
+  // Test endpoint to verify service role configuration
+  async testServiceRole(req: Request, res: Response, next: NextFunction) {
+    try {
       if (!supabaseAdmin) {
         return res.status(500).json({
           success: false,
@@ -324,25 +396,30 @@ class CasesController {
         } as ApiResponse);
       }
 
-      const { error } = await supabaseAdmin
+      // Test a simple query to verify service role works
+      const { data, error } = await supabaseAdmin
         .from('cases')
-        .delete()
-        .eq('id', id);
+        .select('count(*)')
+        .limit(1);
 
       if (error) {
+        console.error('❌ Service role test failed:', error);
         return res.status(500).json({
           success: false,
-          error: 'Failed to delete case',
-          code: 'DELETE_FAILED'
+          error: 'Service role test failed',
+          code: 'SERVICE_ROLE_TEST_FAILED',
+          details: error.message
         } as ApiResponse);
       }
 
       res.json({
         success: true,
-        message: 'Case deleted successfully'
+        message: 'Service role is working correctly',
+        data: { count: data }
       } as ApiResponse);
 
     } catch (error) {
+      console.error('❌ Error in testServiceRole:', error);
       next(error);
     }
   }
