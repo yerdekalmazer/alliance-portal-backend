@@ -50,16 +50,30 @@ class IdeasController {
         } as ApiResponse);
       }
 
-      // Map snake_case to camelCase for frontend
+      // Map snake_case to camelCase for frontend (include case proposal fields)
       const mappedIdeas = (ideas || []).map((idea: any) => ({
         id: (idea as any).id,
         title: (idea as any).title,
         description: (idea as any).description,
         category: (idea as any).category,
+        outputType: (idea as any).output_type,
         problemDefinition: (idea as any).problem_definition,
+        problemStatement: (idea as any).problem_statement,
         targetAudience: (idea as any).target_audience,
         expectedOutcome: (idea as any).expected_outcome,
+        uniqueValue: (idea as any).unique_value,
+        partnerGains: (idea as any).partner_gains,
+        sustainabilityPlan: (idea as any).sustainability_plan,
         pmArchetype: (idea as any).pm_archetype,
+        archetype: (idea as any).archetype,
+        observations: (idea as any).observations,
+        currentProcess: (idea as any).current_process,
+        visionSuccess: (idea as any).vision_success,
+        coreFunctions: (idea as any).core_functions,
+        innovationProposal: (idea as any).innovation_proposal,
+        organization: (idea as any).organization,
+        contactName: (idea as any).contact_name,
+        email: (idea as any).email,
         submittedBy: 'Alliance Partner', // Temporary - will be enhanced later
         submittedById: (idea as any).submitted_by,
         submittedAt: new Date((idea as any).submitted_at),
@@ -116,16 +130,30 @@ class IdeasController {
         } as ApiResponse);
       }
 
-      // Map snake_case to camelCase for frontend
+      // Map snake_case to camelCase for frontend (include case proposal fields)
       const mappedIdea = {
         id: (idea as any).id,
         title: (idea as any).title,
         description: (idea as any).description,
         category: (idea as any).category,
+        outputType: (idea as any).output_type,
         problemDefinition: (idea as any).problem_definition,
+        problemStatement: (idea as any).problem_statement,
         targetAudience: (idea as any).target_audience,
         expectedOutcome: (idea as any).expected_outcome,
+        uniqueValue: (idea as any).unique_value,
+        partnerGains: (idea as any).partner_gains,
+        sustainabilityPlan: (idea as any).sustainability_plan,
         pmArchetype: (idea as any).pm_archetype,
+        archetype: (idea as any).archetype,
+        observations: (idea as any).observations,
+        currentProcess: (idea as any).current_process,
+        visionSuccess: (idea as any).vision_success,
+        coreFunctions: (idea as any).core_functions,
+        innovationProposal: (idea as any).innovation_proposal,
+        organization: (idea as any).organization,
+        contactName: (idea as any).contact_name,
+        email: (idea as any).email,
         submittedBy: 'Alliance Partner', // Temporary - will be enhanced later
         submittedById: (idea as any).submitted_by,
         submittedAt: new Date((idea as any).submitted_at),
@@ -504,6 +532,7 @@ class IdeasController {
 
       // Get user from auth middleware
       const userId = (req as any).user?.id || (req as any).userId;
+      const userEmail = (req as any).user?.email;
       
       if (!userId) {
         console.log('❌ No user ID found for getMyIdeas');
@@ -516,11 +545,14 @@ class IdeasController {
 
       const { status } = req.query;
 
+      // First try to get ideas by submitted_by (userId)
       let query = supabaseAdmin
         .from('idea_submissions' as any)
         .select('*')
-        .eq('submitted_by', userId) // Use submitted_by field which stores userId
+        .eq('submitted_by', userId)
         .order('submitted_at', { ascending: false });
+      
+      console.log('🔍 getMyIdeas query by submitted_by:', userId);
 
       // Apply status filter if provided
       if (status && ['pending', 'approved', 'rejected'].includes(status as string)) {
