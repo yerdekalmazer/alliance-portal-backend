@@ -3,6 +3,33 @@ import { supabase, supabaseAdmin } from '../config/database';
 import { ApiResponse, DashboardStats } from '../models/types';
 
 class AnalyticsController {
+  constructor() {
+    // Bind all methods to ensure 'this' context is preserved
+    this.getDashboardStats = this.getDashboardStats.bind(this);
+    this.getDashboardCharts = this.getDashboardCharts.bind(this);
+    this.exportAnalyticsData = this.exportAnalyticsData.bind(this);
+    this.getCasesOverview = this.getCasesOverview.bind(this);
+    this.getCaseDetailedAnalytics = this.getCaseDetailedAnalytics.bind(this);
+    this.getCasesComparison = this.getCasesComparison.bind(this);
+    this.getParticipantsOverview = this.getParticipantsOverview.bind(this);
+    this.getParticipantsDistribution = this.getParticipantsDistribution.bind(this);
+    this.getParticipantsPerformance = this.getParticipantsPerformance.bind(this);
+    this.getSurveysOverview = this.getSurveysOverview.bind(this);
+    this.getSurveyResponseRates = this.getSurveyResponseRates.bind(this);
+    this.getSurveyTemplateAnalytics = this.getSurveyTemplateAnalytics.bind(this);
+    this.getTeamFormationAnalytics = this.getTeamFormationAnalytics.bind(this);
+    this.getTeamPerformanceAnalytics = this.getTeamPerformanceAnalytics.bind(this);
+    this.getTeamSuccessRates = this.getTeamSuccessRates.bind(this);
+    this.getMonthlyTrends = this.getMonthlyTrends.bind(this);
+    this.getWeeklyTrends = this.getWeeklyTrends.bind(this);
+    this.getParticipationTrends = this.getParticipationTrends.bind(this);
+    this.exportAnalyticsToExcel = this.exportAnalyticsToExcel.bind(this);
+    this.exportAnalyticsToCSV = this.exportAnalyticsToCSV.bind(this);
+    this.exportAnalyticsToPDF = this.exportAnalyticsToPDF.bind(this);
+    this.generateCustomReport = this.generateCustomReport.bind(this);
+    this.getScheduledReports = this.getScheduledReports.bind(this);
+  }
+
   async getDashboardStats(req: Request, res: Response, next: NextFunction) {
     try {
       // Get basic counts from database

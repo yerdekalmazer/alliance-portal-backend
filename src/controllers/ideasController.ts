@@ -3,6 +3,98 @@ import { supabase, supabaseAdmin } from '../config/database';
 import { ApiResponse } from '../models/types';
 
 class IdeasController {
+  constructor() {
+    // Bind all methods to ensure 'this' context is preserved
+    this.getAllIdeas = this.getAllIdeas.bind(this);
+    this.getIdeaById = this.getIdeaById.bind(this);
+    this.createIdea = this.createIdea.bind(this);
+    this.updateIdea = this.updateIdea.bind(this);
+    this.deleteIdea = this.deleteIdea.bind(this);
+    this.updateIdeaStatus = this.updateIdeaStatus.bind(this);
+    this.approveIdea = this.approveIdea.bind(this);
+    this.rejectIdea = this.rejectIdea.bind(this);
+    this.getIdeasByUser = this.getIdeasByUser.bind(this);
+    this.getMyIdeas = this.getMyIdeas.bind(this);
+    this.getPendingIdeas = this.getPendingIdeas.bind(this);
+    this.getApprovedIdeas = this.getApprovedIdeas.bind(this);
+    this.getRejectedIdeas = this.getRejectedIdeas.bind(this);
+    this.getIdeaCanvas = this.getIdeaCanvas.bind(this);
+    this.createCanvas = this.createCanvas.bind(this);
+    this.updateCanvas = this.updateCanvas.bind(this);
+    this.deleteCanvas = this.deleteCanvas.bind(this);
+    this.convertIdeaToCase = this.convertIdeaToCase.bind(this);
+    this.getIdeaComments = this.getIdeaComments.bind(this);
+    this.addIdeaComment = this.addIdeaComment.bind(this);
+    this.getIdeaAnalytics = this.getIdeaAnalytics.bind(this);
+    this.getIdeasOverview = this.getIdeasOverview.bind(this);
+    this.getFeaturedIdeas = this.getFeaturedIdeas.bind(this);
+    this.getIdeaCategories = this.getIdeaCategories.bind(this);
+  }
+
+  // Helper function to map database fields to frontend camelCase
+  private mapIdeaToFrontend = (idea: any) => {
+    // Extract user info if available from join
+    const submitterInfo = idea.submitter;
+    const submitterName = submitterInfo?.name || idea.contact_name || 'Bilinmeyen Kullanıcı';
+    const submitterEmail = submitterInfo?.email || idea.email || '';
+    const submitterOrg = idea.organization || '';
+    
+    // Create display name with organization if available
+    let displayName = submitterName;
+    if (submitterOrg) {
+      displayName = `${submitterName} - ${submitterOrg}`;
+    }
+    
+    return {
+      // Core fields
+      id: idea.id,
+      title: idea.project_title || idea.title || 'Başlıksız',
+      description: idea.description, // Legacy
+      category: idea.category, // Legacy
+      
+      // Step 1: Contact Information
+      contactName: idea.contact_name,
+      email: idea.email,
+      organization: idea.organization,
+      department: idea.department,
+      position: idea.position,
+      phone: idea.phone,
+      contributionTypes: idea.contribution_types || [],
+      
+      // Step 2: Work Scope and Output Focus
+      creativeOutput: idea.creative_output,
+      creativeReference: idea.creative_reference,
+      digitalProduct: idea.digital_product,
+      digitalProductReference: idea.digital_product_reference,
+      digitalExperience: idea.digital_experience,
+      digitalExperienceReference: idea.digital_experience_reference,
+      
+      // Step 3: Collaboration Role (Archetype)
+      archetype: idea.archetype || idea.pm_archetype,
+      
+      // Step 4: Project Details and Value Layers
+      projectTitle: idea.project_title,
+      targetAudience: idea.target_audience,
+      problemNeed: idea.problem_need,
+      mustHaveFeatures: idea.must_have_features,
+      betterFeatures: idea.better_features,
+      surpriseFeatures: idea.surprise_features,
+      archetypeSpecificAnswer: idea.archetype_specific_answer,
+      additionalNotes: idea.additional_notes,
+      
+      // Status and metadata
+      submittedBy: displayName,
+      submittedByEmail: submitterEmail,
+      submittedById: idea.submitted_by,
+      submittedAt: new Date(idea.submitted_at),
+      status: idea.status,
+      rejectionReason: idea.rejection_reason,
+      stage: idea.stage,
+      tags: idea.tags || [],
+      createdAt: new Date(idea.created_at),
+      updatedAt: new Date(idea.updated_at)
+    };
+  }
   // Ideas CRUD
   async getAllIdeas(req: Request, res: Response, next: NextFunction) {
     try {
@@ -20,16 +112,24 @@ class IdeasController {
       }
 
       // Get query parameters for filtering
-      const { status, category, submitted_by } = req.query;
+      const { status, archetype, category, submitted_by } = req.query;
 
       let query = supabaseAdmin
         .from('idea_submissions' as any)
-        .select('*')
+        .select(`
+          *,
+          submitter:users!submitted_by(id, name, email)
+        `)
         .order('submitted_at', { ascending: false });
+      
+      console.log('🔍 Querying ideas with filters:', { status, archetype, category, submitted_by });
 
       // Apply filters
       if (status && ['pending', 'approved', 'rejected'].includes(status as string)) {
         query = query.eq('status', status as 'pending' | 'approved' | 'rejected');
+      }
+      if (archetype) {
+        query = query.eq('archetype', archetype as string);
       }
       if (category) {
         query = query.eq('category', category as string);
@@ -42,52 +142,21 @@ class IdeasController {
 
       if (error) {
         console.error('❌ Failed to fetch ideas:', error);
+        console.error('❌ Full error details:', JSON.stringify(error, null, 2));
         return res.status(500).json({
           success: false,
           error: 'Failed to fetch ideas',
           code: 'FETCH_FAILED',
-          details: error.message
+          details: error.message,
+          hint: error.hint,
+          fullError: error
         } as ApiResponse);
       }
 
-      // Map snake_case to camelCase for frontend (include case proposal fields)
-      const mappedIdeas = (ideas || []).map((idea: any) => ({
-        id: (idea as any).id,
-        title: (idea as any).title,
-        description: (idea as any).description,
-        category: (idea as any).category,
-        outputType: (idea as any).output_type,
-        problemDefinition: (idea as any).problem_definition,
-        problemStatement: (idea as any).problem_statement,
-        targetAudience: (idea as any).target_audience,
-        expectedOutcome: (idea as any).expected_outcome,
-        uniqueValue: (idea as any).unique_value,
-        partnerGains: (idea as any).partner_gains,
-        sustainabilityPlan: (idea as any).sustainability_plan,
-        pmArchetype: (idea as any).pm_archetype,
-        archetype: (idea as any).archetype,
-        observations: (idea as any).observations,
-        currentProcess: (idea as any).current_process,
-        visionSuccess: (idea as any).vision_success,
-        coreFunctions: (idea as any).core_functions,
-        innovationProposal: (idea as any).innovation_proposal,
-        organization: (idea as any).organization,
-        contactName: (idea as any).contact_name,
-        email: (idea as any).email,
-        submittedBy: 'Alliance Partner', // Temporary - will be enhanced later
-        submittedById: (idea as any).submitted_by,
-        submittedAt: new Date((idea as any).submitted_at),
-        status: (idea as any).status,
-        rejectionReason: (idea as any).rejection_reason,
-        stage: (idea as any).stage,
-        marketSize: (idea as any).market_size,
-        expectedROI: (idea as any).expected_roi,
-        timeline: (idea as any).timeline,
-        budget: (idea as any).budget,
-        tags: (idea as any).tags || [],
-        createdAt: new Date((idea as any).created_at),
-        updatedAt: new Date((idea as any).updated_at)
-      }));
+      console.log('✅ Raw ideas from DB:', ideas?.length || 0);
+
+      // Map snake_case to camelCase for frontend using helper
+      const mappedIdeas = (ideas || []).map((idea: any) => this.mapIdeaToFrontend(idea));
 
       console.log('✅ Ideas fetched successfully:', {
         count: mappedIdeas.length,
@@ -118,7 +187,10 @@ class IdeasController {
 
       const { data: idea, error } = await supabaseAdmin
         .from('idea_submissions' as any)
-        .select('*')
+        .select(`
+          *,
+          submitter:users!submitted_by(id, name, email)
+        `)
         .eq('id', id)
         .single();
 
@@ -130,44 +202,8 @@ class IdeasController {
         } as ApiResponse);
       }
 
-      // Map snake_case to camelCase for frontend (include case proposal fields)
-      const mappedIdea = {
-        id: (idea as any).id,
-        title: (idea as any).title,
-        description: (idea as any).description,
-        category: (idea as any).category,
-        outputType: (idea as any).output_type,
-        problemDefinition: (idea as any).problem_definition,
-        problemStatement: (idea as any).problem_statement,
-        targetAudience: (idea as any).target_audience,
-        expectedOutcome: (idea as any).expected_outcome,
-        uniqueValue: (idea as any).unique_value,
-        partnerGains: (idea as any).partner_gains,
-        sustainabilityPlan: (idea as any).sustainability_plan,
-        pmArchetype: (idea as any).pm_archetype,
-        archetype: (idea as any).archetype,
-        observations: (idea as any).observations,
-        currentProcess: (idea as any).current_process,
-        visionSuccess: (idea as any).vision_success,
-        coreFunctions: (idea as any).core_functions,
-        innovationProposal: (idea as any).innovation_proposal,
-        organization: (idea as any).organization,
-        contactName: (idea as any).contact_name,
-        email: (idea as any).email,
-        submittedBy: 'Alliance Partner', // Temporary - will be enhanced later
-        submittedById: (idea as any).submitted_by,
-        submittedAt: new Date((idea as any).submitted_at),
-        status: (idea as any).status,
-        rejectionReason: (idea as any).rejection_reason,
-        stage: (idea as any).stage,
-        marketSize: (idea as any).market_size,
-        expectedROI: (idea as any).expected_roi,
-        timeline: (idea as any).timeline,
-        budget: (idea as any).budget,
-        tags: (idea as any).tags || [],
-        createdAt: new Date((idea as any).created_at),
-        updatedAt: new Date((idea as any).updated_at)
-      };
+      // Map snake_case to camelCase for frontend using helper
+      const mappedIdea = this.mapIdeaToFrontend(idea);
 
       res.json({
         success: true,
@@ -188,27 +224,45 @@ class IdeasController {
       });
 
       const {
-        title,
-        description,
-        category,
-        problem_definition,
+        // Step 1: Contact Information
+        contact_name,
+        email,
+        organization,
+        department,
+        position,
+        phone,
+        contribution_types = [],
+        
+        // Step 2: Work Scope and Output Focus
+        creative_output,
+        creative_reference,
+        digital_product,
+        digital_product_reference,
+        digital_experience,
+        digital_experience_reference,
+        
+        // Step 3: Collaboration Role (Archetype)
+        archetype,
+        
+        // Step 4: Project Details and Value Layers
+        project_title,
         target_audience,
-        expected_outcome,
-        pm_archetype,
-        stage,
-        market_size,
-        expected_roi,
-        timeline,
-        budget,
-        attachments = [],
-        tags = []
+        problem_need,
+        must_have_features,
+        better_features,
+        surprise_features,
+        archetype_specific_answer,
+        additional_notes,
+        
+        // Metadata
+        stage
       } = req.body;
 
-      // Validate required fields
-      if (!title || !description || !category) {
+      // Validate required fields (flexible for old and new data)
+      if (!project_title && !contact_name) {
         return res.status(400).json({
           success: false,
-          error: 'Title, description and category are required',
+          error: 'Project title or contact name is required',
           code: 'MISSING_FIELDS'
         } as ApiResponse);
       }
@@ -226,19 +280,38 @@ class IdeasController {
       const userName = (req as any).user?.name || (req as any).user?.email || 'Unknown User';
 
       const ideaInsertData = {
-        title,
-        description,
-        category,
-        problem_definition,
+        // Step 1: Contact Information
+        contact_name,
+        email,
+        organization,
+        department,
+        position,
+        phone,
+        contribution_types,
+        
+        // Step 2: Work Scope and Output Focus
+        creative_output,
+        creative_reference,
+        digital_product,
+        digital_product_reference,
+        digital_experience,
+        digital_experience_reference,
+        
+        // Step 3: Collaboration Role (Archetype)
+        archetype,
+        
+        // Step 4: Project Details and Value Layers
+        project_title,
         target_audience,
-        expected_outcome,
-        pm_archetype,
-        stage,
-        market_size,
-        expected_roi,
-        timeline,
-        budget,
-        tags,
+        problem_need,
+        must_have_features,
+        better_features,
+        surprise_features,
+        archetype_specific_answer,
+        additional_notes,
+        
+        // Metadata
+        stage: stage || 'submitted',
         submitted_by: userId, // Use userId for foreign key reference
         status: 'pending'
       };
@@ -261,30 +334,8 @@ class IdeasController {
         } as ApiResponse);
       }
 
-      // Map snake_case to camelCase for frontend
-      const mappedIdea = {
-        id: (idea as any).id,
-        title: (idea as any).title,
-        description: (idea as any).description,
-        category: (idea as any).category,
-        problemDefinition: (idea as any).problem_definition,
-        targetAudience: (idea as any).target_audience,
-        expectedOutcome: (idea as any).expected_outcome,
-        pmArchetype: (idea as any).pm_archetype,
-        submittedBy: 'Alliance Partner', // Temporary - will be enhanced later
-        submittedById: (idea as any).submitted_by,
-        submittedAt: new Date((idea as any).submitted_at),
-        status: (idea as any).status,
-        rejectionReason: (idea as any).rejection_reason,
-        stage: (idea as any).stage,
-        marketSize: (idea as any).market_size,
-        expectedROI: (idea as any).expected_roi,
-        timeline: (idea as any).timeline,
-        budget: (idea as any).budget,
-        tags: (idea as any).tags || [],
-        createdAt: new Date((idea as any).created_at),
-        updatedAt: new Date((idea as any).updated_at)
-      };
+      // Map snake_case to camelCase for frontend using helper
+      const mappedIdea = this.mapIdeaToFrontend(idea);
 
       console.log('✅ Idea created successfully:', mappedIdea);
 
@@ -385,30 +436,8 @@ class IdeasController {
         } as ApiResponse);
       }
 
-      // Map snake_case to camelCase for frontend
-      const mappedIdea = {
-        id: (idea as any).id,
-        title: (idea as any).title,
-        description: (idea as any).description,
-        category: (idea as any).category,
-        problemDefinition: (idea as any).problem_definition,
-        targetAudience: (idea as any).target_audience,
-        expectedOutcome: (idea as any).expected_outcome,
-        pmArchetype: (idea as any).pm_archetype,
-        submittedBy: 'Alliance Partner', // Temporary - will be enhanced later
-        submittedById: (idea as any).submitted_by,
-        submittedAt: new Date((idea as any).submitted_at),
-        status: (idea as any).status,
-        rejectionReason: (idea as any).rejection_reason,
-        stage: (idea as any).stage,
-        marketSize: (idea as any).market_size,
-        expectedROI: (idea as any).expected_roi,
-        timeline: (idea as any).timeline,
-        budget: (idea as any).budget,
-        tags: (idea as any).tags || [],
-        createdAt: new Date((idea as any).created_at),
-        updatedAt: new Date((idea as any).updated_at)
-      };
+      // Map snake_case to camelCase for frontend using helper
+      const mappedIdea = this.mapIdeaToFrontend(idea);
 
       res.json({
         success: true,
@@ -479,30 +508,8 @@ class IdeasController {
         } as ApiResponse);
       }
 
-      // Map snake_case to camelCase for frontend
-      const mappedIdeas = (ideas || []).map((idea: any) => ({
-        id: (idea as any).id,
-        title: (idea as any).title,
-        description: (idea as any).description,
-        category: (idea as any).category,
-        problemDefinition: (idea as any).problem_definition,
-        targetAudience: (idea as any).target_audience,
-        expectedOutcome: (idea as any).expected_outcome,
-        pmArchetype: (idea as any).pm_archetype,
-        submittedBy: 'Alliance Partner', // Temporary - will be enhanced later
-        submittedById: (idea as any).submitted_by,
-        submittedAt: new Date((idea as any).submitted_at),
-        status: (idea as any).status,
-        rejectionReason: (idea as any).rejection_reason,
-        stage: (idea as any).stage,
-        marketSize: (idea as any).market_size,
-        expectedROI: (idea as any).expected_roi,
-        timeline: (idea as any).timeline,
-        budget: (idea as any).budget,
-        tags: (idea as any).tags || [],
-        createdAt: new Date((idea as any).created_at),
-        updatedAt: new Date((idea as any).updated_at)
-      }));
+      // Map snake_case to camelCase for frontend using helper
+      const mappedIdeas = (ideas || []).map((idea: any) => this.mapIdeaToFrontend(idea));
 
       res.json({
         success: true,
@@ -573,30 +580,8 @@ class IdeasController {
         } as ApiResponse);
       }
 
-      // Map snake_case to camelCase for frontend
-      const mappedIdeas = (ideas || []).map((idea: any) => ({
-        id: (idea as any).id,
-        title: (idea as any).title,
-        description: (idea as any).description,
-        category: (idea as any).category,
-        problemDefinition: (idea as any).problem_definition,
-        targetAudience: (idea as any).target_audience,
-        expectedOutcome: (idea as any).expected_outcome,
-        pmArchetype: (idea as any).pm_archetype,
-        submittedBy: 'Alliance Partner', // Temporary - will be enhanced later
-        submittedById: (idea as any).submitted_by,
-        submittedAt: new Date((idea as any).submitted_at),
-        status: (idea as any).status,
-        rejectionReason: (idea as any).rejection_reason,
-        stage: (idea as any).stage,
-        marketSize: (idea as any).market_size,
-        expectedROI: (idea as any).expected_roi,
-        timeline: (idea as any).timeline,
-        budget: (idea as any).budget,
-        tags: (idea as any).tags || [],
-        createdAt: new Date((idea as any).created_at),
-        updatedAt: new Date((idea as any).updated_at)
-      }));
+      // Map snake_case to camelCase for frontend using helper
+      const mappedIdeas = (ideas || []).map((idea: any) => this.mapIdeaToFrontend(idea));
 
       console.log('✅ My ideas fetched successfully:', {
         userId,

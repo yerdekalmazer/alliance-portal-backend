@@ -3,6 +3,14 @@ import { supabase, supabaseAdmin } from '../config/database';
 import { ApiResponse } from '../models/types';
 
 class ApplicationsController {
+  constructor() {
+    // Bind all methods to ensure 'this' context is preserved
+    this.getAllApplications = this.getAllApplications.bind(this);
+    this.getApplicationById = this.getApplicationById.bind(this);
+    this.updateApplicationStatus = this.updateApplicationStatus.bind(this);
+    this.getApplicationStats = this.getApplicationStats.bind(this);
+  }
+
   // Get all applications
   async getAllApplications(req: Request, res: Response, next: NextFunction) {
     try {

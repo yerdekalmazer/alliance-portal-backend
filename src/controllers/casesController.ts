@@ -3,6 +3,32 @@ import { supabase, supabaseAdmin } from '../config/database';
 import { CaseScenario, ApiResponse } from '../models/types';
 
 class CasesController {
+  constructor() {
+    // Bind all methods to ensure 'this' context is preserved
+    this.getAllCases = this.getAllCases.bind(this);
+    this.getCaseById = this.getCaseById.bind(this);
+    this.createCase = this.createCase.bind(this);
+    this.updateCase = this.updateCase.bind(this);
+    this.deleteCase = this.deleteCase.bind(this);
+    this.testServiceRole = this.testServiceRole.bind(this);
+    this.getCaseStats = this.getCaseStats.bind(this);
+    this.getCaseAnalytics = this.getCaseAnalytics.bind(this);
+    this.getTeamMembers = this.getTeamMembers.bind(this);
+    this.addTeamMember = this.addTeamMember.bind(this);
+    this.updateTeamMember = this.updateTeamMember.bind(this);
+    this.removeTeamMember = this.removeTeamMember.bind(this);
+    this.assignSurveyToMember = this.assignSurveyToMember.bind(this);
+    this.getSurveyAssignments = this.getSurveyAssignments.bind(this);
+    this.getAssessmentResults = this.getAssessmentResults.bind(this);
+    this.getAdaptiveAssessmentResults = this.getAdaptiveAssessmentResults.bind(this);
+    this.saveAssessmentResult = this.saveAssessmentResult.bind(this);
+    this.getTeamRecommendations = this.getTeamRecommendations.bind(this);
+    this.generateTeams = this.generateTeams.bind(this);
+    this.exportCaseToExcel = this.exportCaseToExcel.bind(this);
+    this.updateCaseAdminMessage = this.updateCaseAdminMessage.bind(this);
+    this.exportCaseToPdf = this.exportCaseToPdf.bind(this);
+  }
+
   async getAllCases(req: Request, res: Response, next: NextFunction) {
     try {
       // Use service role for now (development) - auth middleware already verified user

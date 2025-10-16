@@ -2,6 +2,13 @@ import { Request, Response, NextFunction } from 'express';
 import { supabaseAdmin } from '../config/database';
 
 class CaseProposalsController {
+  constructor() {
+    // Bind all methods to ensure 'this' context is preserved
+    this.submit = this.submit.bind(this);
+    this.list = this.list.bind(this);
+    this.updateStatus = this.updateStatus.bind(this);
+  }
+
   async submit(req: Request, res: Response, next: NextFunction) {
     try {
       if (!supabaseAdmin) {

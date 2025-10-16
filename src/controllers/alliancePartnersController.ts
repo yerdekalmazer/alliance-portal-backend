@@ -47,6 +47,16 @@ interface UpdateAlliancePartnerRequest {
 }
 
 class AlliancePartnersController {
+  constructor() {
+    // Bind all methods to ensure 'this' context is preserved
+    this.getAllPartners = this.getAllPartners.bind(this);
+    this.getPartnerById = this.getPartnerById.bind(this);
+    this.createPartner = this.createPartner.bind(this);
+    this.updatePartner = this.updatePartner.bind(this);
+    this.deletePartner = this.deletePartner.bind(this);
+    this.getPartnerStats = this.getPartnerStats.bind(this);
+  }
+
   // Get all alliance partners
   async getAllPartners(req: Request, res: Response, next: NextFunction) {
     try {

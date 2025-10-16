@@ -3,6 +3,23 @@ import { supabase, supabaseAdmin } from '../config/database';
 import { User, LoginRequest, RegisterRequest, ApiResponse } from '../models/types';
 
 class AuthController {
+  constructor() {
+    // Bind all methods to ensure 'this' context is preserved
+    this.login = this.login.bind(this);
+    this.register = this.register.bind(this);
+    this.getProfile = this.getProfile.bind(this);
+    this.updateProfile = this.updateProfile.bind(this);
+    this.logout = this.logout.bind(this);
+    this.refreshToken = this.refreshToken.bind(this);
+    this.forgotPassword = this.forgotPassword.bind(this);
+    this.resetPassword = this.resetPassword.bind(this);
+    this.verifyEmail = this.verifyEmail.bind(this);
+    this.resendVerification = this.resendVerification.bind(this);
+    this.getAllUsers = this.getAllUsers.bind(this);
+    this.updateUserRole = this.updateUserRole.bind(this);
+    this.verifyToken = this.verifyToken.bind(this);
+  }
+
   async login(req: Request, res: Response, next: NextFunction) {
     try {
       const { email, password }: LoginRequest = req.body;

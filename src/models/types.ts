@@ -95,10 +95,54 @@ export interface IdeaSubmission {
   title: string;
   description: string;
   category: string;
+  
+  // Step 1: Contact Information
+  contact_name?: string;
+  email?: string;
+  organization?: string;
+  department?: string;
+  position?: string;
+  phone?: string;
+  contribution_types?: string[]; // max 2
+  
+  // Step 2: Work Scope and Output Focus
+  creative_output?: string; // Selected creative output type
+  creative_reference?: string; // Reference link/file for creative work
+  digital_product?: string; // Selected digital product type
+  digital_product_reference?: string; // Reference link/file for digital product
+  digital_experience?: string; // Selected digital experience type
+  digital_experience_reference?: string; // Reference link/file for digital experience
+  output_type?: string; // Legacy field
+  
+  // Step 3: Collaboration Role (Archetype)
+  archetype?: 'Yönlendirici' | 'Düzenleyici' | 'Yürütücü' | 'Dönüştürücü';
+  observations?: string; // Yönlendirici specific
+  current_process?: string; // Düzenleyici specific
+  vision_success?: string; // Yürütücü specific
+  core_functions?: string; // Yürütücü specific
+  innovation_proposal?: string; // Dönüştürücü specific
+  
+  // Step 4: Project Details and Value Layers
+  project_title?: string; // Project/Idea/Concept/Proposal Title
+  target_audience?: string; // Target Audience
+  problem_need?: string; // Need or Problem Definition
+  must_have_features?: string; // KANO Canvas: Must-Have Features
+  better_features?: string; // KANO Canvas: Better/Enhancing Features
+  surprise_features?: string; // KANO Canvas: Surprise Features
+  archetype_specific_answer?: string; // Dynamic question answer based on archetype
+  additional_notes?: string; // Additional notes/comments
+  
+  // Legacy fields (backward compatibility)
   problem_definition?: string;
-  target_audience?: string;
+  problem_statement?: string;
+  unique_value?: string;
+  partner_gains?: string;
+  sustainability_plan?: string;
   expected_outcome?: string;
   pm_archetype?: string;
+  contribution?: string;
+  
+  // Status and metadata
   submitted_by: string;
   status: 'pending' | 'approved' | 'rejected';
   rejection_reason?: string;

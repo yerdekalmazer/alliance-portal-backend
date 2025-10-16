@@ -4,6 +4,35 @@ import { ApiResponse, SurveyTemplate, SurveyResponse, SurveyLink } from '../mode
 import { technicalAssessmentController } from './technicalAssessmentController';
 
 class SurveyController {
+  constructor() {
+    // Bind all methods to ensure 'this' context is preserved
+    this.getSurveyTemplates = this.getSurveyTemplates.bind(this);
+    this.getSurveyTemplateById = this.getSurveyTemplateById.bind(this);
+    this.deleteSurveyTemplate = this.deleteSurveyTemplate.bind(this);
+    this.createSurveyTemplate = this.createSurveyTemplate.bind(this);
+    this.updateSurveyTemplate = this.updateSurveyTemplate.bind(this);
+    this.getSurveyLinks = this.getSurveyLinks.bind(this);
+    this.createSurveyLink = this.createSurveyLink.bind(this);
+    this.getSurveyLinkById = this.getSurveyLinkById.bind(this);
+    this.updateSurveyLink = this.updateSurveyLink.bind(this);
+    this.deleteSurveyLink = this.deleteSurveyLink.bind(this);
+    this.getSurveyResponses = this.getSurveyResponses.bind(this);
+    this.getSurveyResponseById = this.getSurveyResponseById.bind(this);
+    this.submitSurveyResponse = this.submitSurveyResponse.bind(this);
+    this.updateSurveyResponse = this.updateSurveyResponse.bind(this);
+    this.deleteSurveyResponse = this.deleteSurveyResponse.bind(this);
+    this.generateDynamicSurvey = this.generateDynamicSurvey.bind(this);
+    this.generateSurveyForCase = this.generateSurveyForCase.bind(this);
+    this.getResponsesSummary = this.getResponsesSummary.bind(this);
+    this.getTemplateAnalytics = this.getTemplateAnalytics.bind(this);
+    this.getCaseSurveyAnalytics = this.getCaseSurveyAnalytics.bind(this);
+    this.getPublicSurvey = this.getPublicSurvey.bind(this);
+    this.submitPublicSurvey = this.submitPublicSurvey.bind(this);
+    this.generateTechnicalAssessment = this.generateTechnicalAssessment.bind(this);
+    this.analyzeTechnicalAssessment = this.analyzeTechnicalAssessment.bind(this);
+    this.submitAdaptiveAssessmentResponse = this.submitAdaptiveAssessmentResponse.bind(this);
+  }
+
   // Survey Templates
   async getSurveyTemplates(req: Request, res: Response, next: NextFunction) {
     try {
