@@ -16,5 +16,8 @@ router.put('/:id/status', authMiddleware, requireAdmin, applicationsController.u
 // Get application statistics (admin/alliance only)
 router.get('/stats/overview', authMiddleware, requireAdmin, applicationsController.getApplicationStats);
 
+// Delete application (admin/alliance only)
+router.delete('/:id', authMiddleware, requireAdmin, applicationsController.deleteApplication);
+
 export default router;
 

@@ -4,7 +4,8 @@ import {
   getAllianceApplications, 
   getAllianceApplicationById, 
   updateAllianceApplicationStatus, 
-  getAllianceApplicationStats 
+  getAllianceApplicationStats,
+  deleteAllianceApplication 
 } from '../controllers/allianceApplicationsController';
 import { authMiddleware } from '../middleware/auth';
 
@@ -262,5 +263,33 @@ router.put('/:id/status', authMiddleware, updateAllianceApplicationStatus);
  *         description: Internal server error
  */
 router.get('/stats/overview', authMiddleware, getAllianceApplicationStats);
+
+/**
+ * @swagger
+ * /api/alliance-applications/{id}:
+ *   delete:
+ *     summary: Delete alliance application (Admin only)
+ *     tags: [Alliance Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Application ID
+ *     responses:
+ *       200:
+ *         description: Application deleted successfully
+ *       404:
+ *         description: Application not found
+ *       403:
+ *         description: Admin access required
+ *       401:
+ *         description: Unauthorized
+ */
+router.delete('/:id', authMiddleware, deleteAllianceApplication);
 
 export default router;

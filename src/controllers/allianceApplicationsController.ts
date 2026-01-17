@@ -306,3 +306,70 @@ export const getAllianceApplicationStats = async (req: Request, res: Response) =
     });
   }
 };
+
+export const deleteAllianceApplication = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Check admin permissions
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Admin access required',
+        code: 'INSUFFICIENT_PERMISSIONS'
+      });
+    }
+
+    const db: any = (supabaseAdmin as any) || (supabase as any);
+    if (!db) {
+      return res.status(500).json({ success: false, error: 'Database client not initialized' });
+    }
+
+    // Check if application exists
+    const { data: existingApp, error: fetchError } = await db
+      .from('alliance_applications')
+      .select('id, organization_name')
+      .eq('id', id)
+      .single();
+
+    if (fetchError) {
+      if (fetchError.code === 'PGRST116') {
+        return res.status(404).json({
+          success: false,
+          error: 'Application not found',
+          code: 'APPLICATION_NOT_FOUND'
+        });
+      }
+      throw fetchError;
+    }
+
+    // Delete the application
+    const { error: deleteError } = await db
+      .from('alliance_applications')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      console.error('Database deletion error:', deleteError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to delete application',
+        code: 'DELETE_FAILED'
+      });
+    }
+
+    console.log(`✅ Alliance application deleted: ${existingApp.organization_name} (${id})`);
+
+    res.json({
+      success: true,
+      message: 'Application deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Delete alliance application error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+};

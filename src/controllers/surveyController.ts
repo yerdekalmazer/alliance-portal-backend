@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { supabase, supabaseAdmin } from '../config/database';
 import { ApiResponse, SurveyTemplate, SurveyResponse, SurveyLink } from '../models/types';
 import { technicalAssessmentController } from './technicalAssessmentController';
+import { calculateAssessmentScore } from '../utils/surveyGeneration';
 
 class SurveyController {
   constructor() {
@@ -517,10 +518,10 @@ class SurveyController {
         }
       }
 
-      // Check if template is adaptive-technical-assessment and pre-generate questions
+      // Check if template is dynamic and pre-generate questions
       const { data: templateData, error: templateDataError } = await supabaseAdmin
         .from('survey_templates')
-        .select('type')
+        .select('*')
         .eq('id', template_id)
         .single();
 
@@ -561,6 +562,58 @@ class SurveyController {
           }
         } catch (error) {
           console.error('❌ Error pre-generating questions:', error);
+        }
+      } else if (templateData?.is_dynamic && case_id) {
+        // Handle other dynamic templates (initial-assessment, application-initial-assessment, technical-assessment)
+        console.log('🔀 Dynamic template detected, generating questions...');
+        console.log('📊 Template type:', templateData.type);
+        console.log('📊 Template is_dynamic:', templateData.is_dynamic);
+        
+        try {
+          // Import survey generation utility
+          const { generateDynamicSurveyQuestions } = require('../utils/surveyGeneration');
+          
+          // Fetch case data to generate questions
+          const { data: caseData, error: caseError } = await supabaseAdmin
+            .from('cases')
+            .select('*')
+            .eq('id', case_id)
+            .single();
+          
+          if (caseError || !caseData) {
+            console.error('❌ Could not fetch case data for dynamic question generation:', caseError);
+          } else {
+            console.log('✅ Case data fetched for question generation');
+            console.log('📊 Case job_types:', (caseData as any).job_types);
+            console.log('📊 Case domain:', (caseData as any).domain);
+            
+            // Convert database format to CaseScenario format
+            const caseScenario = {
+              id: caseData.id,
+              title: (caseData as any).title || '',
+              jobTypes: (caseData as any).job_types || [],
+              specializations: (caseData as any).specializations || [],
+              domain: (caseData as any).domain || ''
+            };
+            
+            // Generate dynamic questions
+            const generatedQuestions = generateDynamicSurveyQuestions(templateData, caseScenario);
+            console.log(`✅ Generated ${generatedQuestions.length} dynamic questions`);
+            
+            // Store generated questions in customizations
+            finalCustomizations = {
+              ...customizations,
+              generatedQuestions: generatedQuestions,
+              isDynamicGenerated: true,
+              caseId: case_id,
+              generatedAt: new Date().toISOString()
+            };
+            
+            console.log('✅ Dynamic questions stored in customizations');
+          }
+        } catch (error) {
+          console.error('❌ Error generating dynamic questions:', error);
+          console.error('Error details:', error instanceof Error ? error.message : String(error));
         }
       }
 
@@ -989,29 +1042,60 @@ class SurveyController {
         } as ApiResponse);
       }
 
-      // Calculate score from responses
-      let totalScore = 0;
-      let maxScore = 0;
+      // IMPROVED: Calculate score using the same function as frontend
+      let score = 0;
+      let calculatedCategoryScores: Record<string, number> = {};
+      let leadershipTypeScores: Record<string, number> = {};
+      let dominantLeadershipType = 'operasyonel-yetenek';
+      let detailedBreakdown: any[] = [];
 
-      if (responses && typeof responses === 'object') {
-        Object.values(responses).forEach((response: any) => {
-          if (response.points) {
-            totalScore += response.points;
-            maxScore += response.maxPoints || response.points;
-          }
+      // Use questions if provided, otherwise we'll have basic scoring
+      if (questions && questions.length > 0) {
+        console.log('📊 Using improved scoring with questions:', questions.length);
+        const scoreResult = calculateAssessmentScore(responses, questions);
+        // Normalize score to 100
+        const normalizedScore = (scoreResult.totalScore / scoreResult.maxPossibleScore) * 100;
+        score = Math.round(normalizedScore);
+        calculatedCategoryScores = scoreResult.categoryScores;
+        leadershipTypeScores = scoreResult.leadershipTypeScores;
+        dominantLeadershipType = scoreResult.dominantLeadershipType;
+        detailedBreakdown = scoreResult.detailedBreakdown;
+        
+        console.log('📊 IMPROVED Score calculation completed:', {
+          rawScore: scoreResult.totalScore,
+          maxPossibleScore: scoreResult.maxPossibleScore,
+          normalizedScore: score,
+          categoryScores: calculatedCategoryScores,
+          leadershipTypeScores,
+          dominantLeadershipType,
+          breakdownCount: detailedBreakdown.length
+        });
+      } else {
+        // Fallback to simple scoring if no questions provided
+        console.log('⚠️ No questions provided, using simple scoring');
+        let totalScore = 0;
+        let maxScore = 0;
+
+        if (responses && typeof responses === 'object') {
+          Object.values(responses).forEach((response: any) => {
+            if (response.points) {
+              totalScore += response.points;
+              maxScore += response.maxPoints || response.points;
+            }
+          });
+        }
+
+        score = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+
+        console.log('📊 Simple score calculation completed:', {
+          totalScore,
+          maxScore,
+          finalScore: score,
+          responseCount: responses ? Object.keys(responses).length : 0
         });
       }
 
-      const score = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
-
-      console.log('📊 Score calculation completed:', {
-        totalScore,
-        maxScore,
-        finalScore: score,
-        responseCount: responses ? Object.keys(responses).length : 0
-      });
-
-      // Prepare insert data
+      // Prepare insert data with improved scoring
       const insertData = {
         survey_template_id,
         case_id,
@@ -1023,8 +1107,13 @@ class SurveyController {
         questions,
         score,
         status: 'completed' as 'completed', // Type assertion for TypeScript
-        technical_details,
-        category_scores,
+        technical_details: technical_details || {
+          breakdown: detailedBreakdown,
+          leadershipScores: leadershipTypeScores,
+          dominantLeadershipType: dominantLeadershipType
+        },
+        category_scores: category_scores || calculatedCategoryScores,
+        // leadership_type: dominantLeadershipType, // TODO: Uncomment after running migration 022
         completed_at: new Date().toISOString(),
         submitted_at: new Date().toISOString()
       };
@@ -1749,10 +1838,17 @@ Admin panelinden detaylı inceleme yapabilirsiniz.
       let questions = (surveyLink as any).survey_templates?.questions || [];
       
       const customizations = surveyLink.customizations as any;
-      if (customizations?.isDynamic && customizations?.dynamicQuestions) {
-        console.log('🎯 Dinamik anket tespit edildi, customizations\'dan sorular alınıyor...');
+      // Check for generated questions (generatedQuestions from createSurveyLink)
+      if (customizations?.generatedQuestions && Array.isArray(customizations.generatedQuestions) && customizations.generatedQuestions.length > 0) {
+        console.log('🎯 Dinamik anket tespit edildi (generatedQuestions), customizations\'dan sorular alınıyor...');
+        questions = customizations.generatedQuestions;
+        console.log(`✅ ${questions.length} dinamik soru yüklendi`);
+      }
+      // Fallback to old dynamicQuestions key for backwards compatibility
+      else if (customizations?.dynamicQuestions && Array.isArray(customizations.dynamicQuestions) && customizations.dynamicQuestions.length > 0) {
+        console.log('🎯 Dinamik anket tespit edildi (dynamicQuestions), customizations\'dan sorular alınıyor...');
         questions = customizations.dynamicQuestions;
-        console.log(`✅ ${Array.isArray(questions) ? questions.length : 0} dinamik soru yüklendi`);
+        console.log(`✅ ${questions.length} dinamik soru yüklendi`);
       }
 
       // Remove sensitive data before sending to public

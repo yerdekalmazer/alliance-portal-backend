@@ -27,7 +27,7 @@ class AuthController {
       if (!email || !password) {
         return res.status(400).json({
           success: false,
-          error: 'Email and password are required',
+          error: 'E-posta ve şifre alanları zorunludur.',
           code: 'MISSING_CREDENTIALS'
         } as ApiResponse);
       }
@@ -40,10 +40,35 @@ class AuthController {
       });
 
       if (error) {
+        // Log the actual error for debugging
+        console.error('Login error from Supabase:', error);
+        
+        // Provide more specific error messages based on the error type
+        let errorMessage = 'Giriş başarısız oldu';
+        let errorCode = 'LOGIN_FAILED';
+        
+        if (error.message.includes('Invalid login credentials')) {
+          errorMessage = 'E-posta veya şifre hatalı. Lütfen bilgilerinizi kontrol edin.';
+          errorCode = 'INVALID_CREDENTIALS';
+        } else if (error.message.includes('Email not confirmed')) {
+          errorMessage = 'E-posta adresiniz henüz onaylanmamış. Lütfen e-posta adresinizi onaylayın.';
+          errorCode = 'EMAIL_NOT_CONFIRMED';
+        } else if (error.message.includes('User not found')) {
+          errorMessage = 'Bu e-posta adresi ile kayıtlı bir kullanıcı bulunamadı.';
+          errorCode = 'USER_NOT_FOUND';
+        } else if (error.message.includes('Too many requests')) {
+          errorMessage = 'Çok fazla deneme yaptınız. Lütfen birkaç dakika sonra tekrar deneyin.';
+          errorCode = 'TOO_MANY_REQUESTS';
+        } else {
+          // Generic error message for unknown errors
+          errorMessage = 'Giriş yapılamadı. Lütfen bilgilerinizi kontrol edip tekrar deneyin.';
+          errorCode = 'LOGIN_ERROR';
+        }
+        
         return res.status(401).json({
           success: false,
-          error: 'Invalid credentials',
-          code: 'INVALID_CREDENTIALS'
+          error: errorMessage,
+          code: errorCode
         } as ApiResponse);
       }
 
@@ -51,7 +76,7 @@ class AuthController {
       if (!supabaseAdmin) {
         return res.status(500).json({
           success: false,
-          error: 'Service role key not configured',
+          error: 'Sunucu yapılandırma hatası. Lütfen sistem yöneticisine başvurun.',
           code: 'SERVICE_ROLE_MISSING'
         } as ApiResponse);
       }
@@ -65,7 +90,7 @@ class AuthController {
       if (userError) {
         return res.status(404).json({
           success: false,
-          error: 'User not found in database',
+          error: 'Kullanıcı bilgileri veritabanında bulunamadı.',
           code: 'USER_NOT_FOUND'
         } as ApiResponse);
       }
@@ -77,7 +102,7 @@ class AuthController {
           token: data.session?.access_token,
           session: data.session
         },
-        message: 'Login successful'
+        message: 'Giriş başarılı'
       } as ApiResponse<{ user: User; token: string; session: any }>);
 
     } catch (error) {
@@ -92,7 +117,7 @@ class AuthController {
       if (!email || !password || !name) {
         return res.status(400).json({
           success: false,
-          error: 'Email, password and name are required',
+          error: 'E-posta, şifre ve isim alanları zorunludur.',
           code: 'MISSING_FIELDS'
         } as ApiResponse);
       }
@@ -110,17 +135,38 @@ class AuthController {
       });
 
       if (error) {
+        // Log the actual error for debugging
+        console.error('Registration error from Supabase:', error);
+        
+        // Provide more specific error messages
+        let errorMessage = 'Kayıt işlemi başarısız oldu';
+        let errorCode = 'REGISTRATION_FAILED';
+        
+        if (error.message.includes('already registered') || error.message.includes('already exists')) {
+          errorMessage = 'Bu e-posta adresi zaten kullanılıyor. Lütfen farklı bir e-posta adresi deneyin.';
+          errorCode = 'EMAIL_ALREADY_EXISTS';
+        } else if (error.message.includes('Password should be at least')) {
+          errorMessage = 'Şifre en az 6 karakter olmalıdır.';
+          errorCode = 'WEAK_PASSWORD';
+        } else if (error.message.includes('Invalid email')) {
+          errorMessage = 'Geçersiz e-posta adresi. Lütfen geçerli bir e-posta adresi girin.';
+          errorCode = 'INVALID_EMAIL';
+        } else {
+          errorMessage = error.message || 'Kayıt işlemi başarısız oldu. Lütfen tekrar deneyin.';
+          errorCode = 'REGISTRATION_FAILED';
+        }
+        
         return res.status(400).json({
           success: false,
-          error: error.message,
-          code: 'REGISTRATION_FAILED'
+          error: errorMessage,
+          code: errorCode
         } as ApiResponse);
       }
 
       if (!data.user) {
         return res.status(400).json({
           success: false,
-          error: 'Registration failed',
+          error: 'Kayıt işlemi başarısız oldu. Lütfen tekrar deneyin.',
           code: 'REGISTRATION_FAILED'
         } as ApiResponse);
       }
@@ -129,7 +175,7 @@ class AuthController {
       if (!supabaseAdmin) {
         return res.status(500).json({
           success: false,
-          error: 'Service role key not configured',
+          error: 'Sunucu yapılandırma hatası. Lütfen sistem yöneticisine başvurun.',
           code: 'SERVICE_ROLE_MISSING'
         } as ApiResponse);
       }
@@ -153,7 +199,7 @@ class AuthController {
         
         return res.status(500).json({
           success: false,
-          error: 'Failed to create user profile',
+          error: 'Kullanıcı profili oluşturulamadı. Lütfen tekrar deneyin.',
           code: 'PROFILE_CREATION_FAILED'
         } as ApiResponse);
       }
@@ -165,7 +211,7 @@ class AuthController {
           token: data.session?.access_token,
           session: data.session
         },
-        message: 'Registration successful. Please check your email for verification.'
+        message: 'Kayıt başarılı. Lütfen e-posta adresinizi kontrol edin ve doğrulayın.'
       } as ApiResponse<{ user: User; session: any }>);
 
     } catch (error) {
@@ -180,7 +226,7 @@ class AuthController {
       res.json({
         success: true,
         data: user,
-        message: 'Profile retrieved successfully'
+        message: 'Profil başarıyla alındı'
       } as ApiResponse<User>);
 
     } catch (error) {
@@ -196,7 +242,7 @@ class AuthController {
       if (!userId) {
         return res.status(401).json({
           success: false,
-          error: 'User not authenticated',
+          error: 'Kullanıcı doğrulanmadı. Lütfen giriş yapın.',
           code: 'NOT_AUTHENTICATED'
         } as ApiResponse);
       }
@@ -204,7 +250,7 @@ class AuthController {
       if (!name) {
         return res.status(400).json({
           success: false,
-          error: 'Name is required',
+          error: 'İsim alanı zorunludur.',
           code: 'MISSING_NAME'
         } as ApiResponse);
       }
@@ -222,7 +268,7 @@ class AuthController {
       if (error) {
         return res.status(500).json({
           success: false,
-          error: 'Failed to update profile',
+          error: 'Profil güncellenemedi. Lütfen tekrar deneyin.',
           code: 'UPDATE_FAILED'
         } as ApiResponse);
       }
@@ -230,7 +276,7 @@ class AuthController {
       res.json({
         success: true,
         data,
-        message: 'Profile updated successfully'
+        message: 'Profil başarıyla güncellendi'
       } as ApiResponse<User>);
 
     } catch (error) {
@@ -245,14 +291,14 @@ class AuthController {
       if (error) {
         return res.status(500).json({
           success: false,
-          error: 'Logout failed',
+          error: 'Çıkış yapılamadı. Lütfen tekrar deneyin.',
           code: 'LOGOUT_FAILED'
         } as ApiResponse);
       }
 
       res.json({
         success: true,
-        message: 'Logout successful'
+        message: 'Çıkış başarılı'
       } as ApiResponse);
 
     } catch (error) {
@@ -267,7 +313,7 @@ class AuthController {
       if (!refresh_token) {
         return res.status(400).json({
           success: false,
-          error: 'Refresh token is required',
+          error: 'Yenileme anahtarı gereklidir.',
           code: 'MISSING_REFRESH_TOKEN'
         } as ApiResponse);
       }
@@ -279,7 +325,7 @@ class AuthController {
       if (error) {
         return res.status(401).json({
           success: false,
-          error: 'Invalid refresh token',
+          error: 'Geçersiz yenileme anahtarı. Lütfen tekrar giriş yapın.',
           code: 'INVALID_REFRESH_TOKEN'
         } as ApiResponse);
       }
@@ -287,7 +333,7 @@ class AuthController {
       res.json({
         success: true,
         data: data.session,
-        message: 'Token refreshed successfully'
+        message: 'Oturum başarıyla yenilendi'
       } as ApiResponse);
 
     } catch (error) {
@@ -302,7 +348,7 @@ class AuthController {
       if (!email) {
         return res.status(400).json({
           success: false,
-          error: 'Email is required',
+          error: 'E-posta adresi gereklidir.',
           code: 'MISSING_EMAIL'
         } as ApiResponse);
       }
@@ -312,14 +358,14 @@ class AuthController {
       if (error) {
         return res.status(500).json({
           success: false,
-          error: 'Failed to send reset email',
+          error: 'Şifre sıfırlama e-postası gönderilemedi. Lütfen tekrar deneyin.',
           code: 'RESET_EMAIL_FAILED'
         } as ApiResponse);
       }
 
       res.json({
         success: true,
-        message: 'Password reset email sent'
+        message: 'Şifre sıfırlama e-postası gönderildi'
       } as ApiResponse);
 
     } catch (error) {
@@ -334,7 +380,7 @@ class AuthController {
       if (!access_token || !refresh_token || !password) {
         return res.status(400).json({
           success: false,
-          error: 'Access token, refresh token and new password are required',
+          error: 'Erişim anahtarı, yenileme anahtarı ve yeni şifre gereklidir.',
           code: 'MISSING_RESET_DATA'
         } as ApiResponse);
       }
@@ -348,7 +394,7 @@ class AuthController {
       if (sessionError) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid reset tokens',
+          error: 'Geçersiz sıfırlama anahtarları. Lütfen tekrar deneyin.',
           code: 'INVALID_RESET_TOKENS'
         } as ApiResponse);
       }
@@ -361,14 +407,14 @@ class AuthController {
       if (error) {
         return res.status(500).json({
           success: false,
-          error: 'Failed to update password',
+          error: 'Şifre güncellenemedi. Lütfen tekrar deneyin.',
           code: 'PASSWORD_UPDATE_FAILED'
         } as ApiResponse);
       }
 
       res.json({
         success: true,
-        message: 'Password updated successfully'
+        message: 'Şifre başarıyla güncellendi'
       } as ApiResponse);
 
     } catch (error) {
@@ -383,7 +429,7 @@ class AuthController {
       if (!token || !email) {
         return res.status(400).json({
           success: false,
-          error: 'Token and email are required',
+          error: 'Doğrulama anahtarı ve e-posta adresi gereklidir.',
           code: 'MISSING_VERIFICATION_DATA'
         } as ApiResponse);
       }
@@ -397,14 +443,14 @@ class AuthController {
       if (error) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid verification token',
+          error: 'Geçersiz doğrulama anahtarı. Lütfen tekrar deneyin.',
           code: 'INVALID_VERIFICATION_TOKEN'
         } as ApiResponse);
       }
 
       res.json({
         success: true,
-        message: 'Email verified successfully'
+        message: 'E-posta başarıyla doğrulandı'
       } as ApiResponse);
 
     } catch (error) {
@@ -419,7 +465,7 @@ class AuthController {
       if (!email) {
         return res.status(400).json({
           success: false,
-          error: 'Email is required',
+          error: 'E-posta adresi gereklidir.',
           code: 'MISSING_EMAIL'
         } as ApiResponse);
       }
@@ -432,14 +478,14 @@ class AuthController {
       if (error) {
         return res.status(500).json({
           success: false,
-          error: 'Failed to resend verification email',
+          error: 'Doğrulama e-postası gönderilemedi. Lütfen tekrar deneyin.',
           code: 'RESEND_FAILED'
         } as ApiResponse);
       }
 
       res.json({
         success: true,
-        message: 'Verification email sent'
+        message: 'Doğrulama e-postası gönderildi'
       } as ApiResponse);
 
     } catch (error) {
@@ -455,7 +501,7 @@ class AuthController {
       if (userRole !== 'admin') {
         return res.status(403).json({
           success: false,
-          error: 'Access denied. Admin role required.',
+          error: 'Erişim reddedildi. Yönetici yetkisi gereklidir.',
           code: 'ACCESS_DENIED'
         } as ApiResponse);
       }
@@ -463,7 +509,7 @@ class AuthController {
       if (!supabaseAdmin) {
         return res.status(500).json({
           success: false,
-          error: 'Service role key not configured',
+          error: 'Sunucu yapılandırma hatası. Lütfen sistem yöneticisine başvurun.',
           code: 'SERVICE_ROLE_MISSING'
         } as ApiResponse);
       }
@@ -512,7 +558,7 @@ class AuthController {
       if (error) {
         return res.status(500).json({
           success: false,
-          error: 'Failed to fetch users',
+          error: 'Kullanıcılar getirilemedi. Lütfen tekrar deneyin.',
           code: 'FETCH_FAILED'
         } as ApiResponse);
       }
@@ -534,7 +580,7 @@ class AuthController {
             sort_order: sort_order as string
           }
         },
-        message: 'Users retrieved successfully'
+        message: 'Kullanıcılar başarıyla getirildi'
       } as ApiResponse);
 
     } catch (error) {
@@ -549,7 +595,7 @@ class AuthController {
       if (userRole !== 'admin') {
         return res.status(403).json({
           success: false,
-          error: 'Access denied. Admin role required.',
+          error: 'Erişim reddedildi. Yönetici yetkisi gereklidir.',
           code: 'ACCESS_DENIED'
         } as ApiResponse);
       }
@@ -561,7 +607,7 @@ class AuthController {
       if (!['admin', 'alliance', 'user'].includes(role)) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid role. Must be admin, alliance, or user',
+          error: 'Geçersiz rol. Admin, alliance veya user olmalıdır.',
           code: 'INVALID_ROLE'
         } as ApiResponse);
       }
@@ -569,7 +615,7 @@ class AuthController {
       if (!supabaseAdmin) {
         return res.status(500).json({
           success: false,
-          error: 'Service role key not configured',
+          error: 'Sunucu yapılandırma hatası. Lütfen sistem yöneticisine başvurun.',
           code: 'SERVICE_ROLE_MISSING'
         } as ApiResponse);
       }
@@ -587,7 +633,7 @@ class AuthController {
       if (error) {
         return res.status(500).json({
           success: false,
-          error: 'Failed to update user role',
+          error: 'Kullanıcı rolü güncellenemedi. Lütfen tekrar deneyin.',
           code: 'UPDATE_FAILED'
         } as ApiResponse);
       }
@@ -595,7 +641,7 @@ class AuthController {
       if (!data) {
         return res.status(404).json({
           success: false,
-          error: 'User not found',
+          error: 'Kullanıcı bulunamadı.',
           code: 'USER_NOT_FOUND'
         } as ApiResponse);
       }
@@ -609,7 +655,7 @@ class AuthController {
           role: (data as any).role,
           updated_at: (data as any).updated_at
         },
-        message: 'User role updated successfully'
+        message: 'Kullanıcı rolü başarıyla güncellendi'
       } as ApiResponse);
 
     } catch (error) {
@@ -626,7 +672,7 @@ class AuthController {
       if (!user) {
         return res.status(401).json({
           success: false,
-          error: 'Invalid token',
+          error: 'Geçersiz oturum anahtarı. Lütfen tekrar giriş yapın.',
           code: 'INVALID_TOKEN'
         } as ApiResponse);
       }
@@ -641,7 +687,7 @@ class AuthController {
             role: user.role
           }
         },
-        message: 'Token is valid'
+        message: 'Oturum anahtarı geçerli'
       } as ApiResponse);
 
     } catch (error) {

@@ -235,6 +235,63 @@ class ApplicationsController {
       next(error);
     }
   }
+
+  // Delete application
+  async deleteApplication(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+
+      if (!supabaseAdmin) {
+        return res.status(500).json({
+          success: false,
+          error: 'Service role key not configured',
+          code: 'SERVICE_ROLE_MISSING'
+        } as ApiResponse);
+      }
+
+      // Check if application exists
+      const { data: existingApp, error: fetchError } = await (supabaseAdmin as any)
+        .from('applications')
+        .select('id, participant_name')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === 'PGRST116') {
+          return res.status(404).json({
+            success: false,
+            error: 'Application not found',
+            code: 'APPLICATION_NOT_FOUND'
+          } as ApiResponse);
+        }
+        throw fetchError;
+      }
+
+      // Delete the application
+      const { error: deleteError } = await (supabaseAdmin as any)
+        .from('applications')
+        .delete()
+        .eq('id', id);
+
+      if (deleteError) {
+        console.error('Database deletion error:', deleteError);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to delete application',
+          code: 'DELETE_FAILED'
+        } as ApiResponse);
+      }
+
+      console.log(`✅ Application deleted: ${existingApp.participant_name} (${id})`);
+
+      res.json({
+        success: true,
+        message: 'Application deleted successfully'
+      } as ApiResponse);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const applicationsController = new ApplicationsController();

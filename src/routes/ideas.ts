@@ -31,6 +31,8 @@ router.delete('/:id', authMiddleware, ideasController.deleteIdea);
 router.put('/:id/status', authMiddleware, requireAdmin, ideasController.updateIdeaStatus);
 router.post('/:id/approve', authMiddleware, requireAdmin, ideasController.approveIdea);
 router.post('/:id/reject', authMiddleware, requireAdmin, ideasController.rejectIdea);
+router.post('/:id/archive', authMiddleware, requireAdmin, ideasController.archiveIdea);
+router.post('/:id/unarchive', authMiddleware, requireAdmin, ideasController.unarchiveIdea);
 
 // Canvas Management
 router.get('/:id/canvas', authMiddleware, ideasController.getIdeaCanvas);

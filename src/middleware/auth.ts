@@ -24,7 +24,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     if (!authHeader) {
       return res.status(401).json({
         success: false,
-        error: 'Authorization header missing',
+        error: 'Yetkilendirme başlığı eksik. Lütfen tekrar giriş yapın.',
         code: 'NO_AUTH_HEADER'
       });
     }
@@ -34,7 +34,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     if (!token) {
       return res.status(401).json({
         success: false,
-        error: 'No token provided',
+        error: 'Giriş anahtarı bulunamadı. Lütfen tekrar giriş yapın.',
         code: 'NO_TOKEN'
       });
     }
@@ -51,7 +51,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       console.error('❌ Auth: Token verification failed:', { error: error?.message, hasUser: !!user });
       return res.status(401).json({
         success: false,
-        error: 'Invalid or expired token',
+        error: 'Oturum süreniz dolmuş veya geçersiz. Lütfen tekrar giriş yapın.',
         code: 'INVALID_TOKEN'
       });
     }
@@ -62,7 +62,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     if (!supabaseAdmin) {
       return res.status(500).json({
         success: false,
-        error: 'Service role key not configured',
+        error: 'Sunucu yapılandırma hatası. Lütfen sistem yöneticisine başvurun.',
         code: 'SERVICE_ROLE_MISSING'
       });
     }
@@ -126,14 +126,14 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     });
     return res.status(401).json({
       success: false,
-      error: 'User not found in database',
+      error: 'Kullanıcı bilgileri bulunamadı. Lütfen tekrar giriş yapın.',
       code: 'USER_NOT_FOUND'
     });
   } catch (error) {
     console.error('Auth middleware error:', error);
     return res.status(401).json({
       success: false,
-      error: 'Authentication failed',
+      error: 'Kimlik doğrulama başarısız oldu. Lütfen tekrar giriş yapın.',
       code: 'AUTH_FAILED'
     });
   }
@@ -152,7 +152,7 @@ export function requireRole(roles: UserRole | UserRole[]) {
       console.error('❌ Auth: No user in request object');
       return res.status(401).json({
         success: false,
-        error: 'User not authenticated',
+        error: 'Kullanıcı doğrulanmadı. Lütfen giriş yapın.',
         code: 'NOT_AUTHENTICATED'
       });
     }
@@ -172,7 +172,7 @@ export function requireRole(roles: UserRole | UserRole[]) {
       });
       return res.status(403).json({
         success: false,
-        error: 'Insufficient permissions',
+        error: 'Bu işlem için yetkiniz bulunmuyor.',
         code: 'INSUFFICIENT_PERMISSIONS',
         required: userRoles,
         current: req.user.role

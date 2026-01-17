@@ -152,6 +152,11 @@ export interface IdeaSubmission {
   timeline?: string;
   budget?: string;
   tags?: string[];
+  
+  // Case conversion tracking
+  case_id?: string; // ID of the case created from this idea
+  case_created?: boolean; // Flag indicating if a case was created from this idea
+  
   submitted_at: Date;
   created_at: Date;
   updated_at: Date;

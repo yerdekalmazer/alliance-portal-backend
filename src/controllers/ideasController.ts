@@ -29,6 +29,8 @@ class IdeasController {
     this.getIdeasOverview = this.getIdeasOverview.bind(this);
     this.getFeaturedIdeas = this.getFeaturedIdeas.bind(this);
     this.getIdeaCategories = this.getIdeaCategories.bind(this);
+    this.archiveIdea = this.archiveIdea.bind(this);
+    this.unarchiveIdea = this.unarchiveIdea.bind(this);
   }
 
   // Helper function to map database fields to frontend camelCase
@@ -112,7 +114,7 @@ class IdeasController {
       }
 
       // Get query parameters for filtering
-      const { status, archetype, category, submitted_by } = req.query;
+      const { status, archetype, category, submitted_by, archived } = req.query;
 
       let query = supabaseAdmin
         .from('idea_submissions' as any)
@@ -122,7 +124,7 @@ class IdeasController {
         `)
         .order('submitted_at', { ascending: false });
       
-      console.log('🔍 Querying ideas with filters:', { status, archetype, category, submitted_by });
+      console.log('🔍 Querying ideas with filters:', { status, archetype, category, submitted_by, archived });
 
       // Apply filters
       if (status && ['pending', 'approved', 'rejected'].includes(status as string)) {
@@ -137,6 +139,10 @@ class IdeasController {
       if (submitted_by) {
         query = query.eq('submitted_by', submitted_by as string);
       }
+      
+      // Filter archived status - default to false (show only non-archived)
+      const isArchived = archived === 'true';
+      query = query.eq('archived', isArchived);
 
       const { data: ideas, error } = await query;
 
@@ -363,9 +369,43 @@ class IdeasController {
 
   async deleteIdea(req: Request, res: Response, next: NextFunction) {
     try {
+      const { id } = req.params;
+
+      if (!supabaseAdmin) {
+        return res.status(500).json({
+          success: false,
+          error: 'Sunucu yapılandırma hatası. Lütfen sistem yöneticisine başvurun.',
+          code: 'SERVICE_ROLE_MISSING'
+        } as ApiResponse);
+      }
+
+      // Only admins can permanently delete ideas
+      if (!req.user || req.user.role !== 'admin') {
+        return res.status(403).json({
+          success: false,
+          error: 'Bu işlem için yönetici yetkisi gereklidir.',
+          code: 'ADMIN_ONLY'
+        } as ApiResponse);
+      }
+
+      const { error } = await supabaseAdmin
+        .from('idea_submissions' as any)
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('❌ Failed to delete idea:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Case başvurusu silinemedi. Lütfen tekrar deneyin.',
+          code: 'DELETE_FAILED',
+          details: error.message
+        } as ApiResponse);
+      }
+
       res.json({
         success: true,
-        message: 'Delete idea - coming soon'
+        message: 'Case başvurusu kalıcı olarak silindi'
       } as ApiResponse);
     } catch (error) {
       next(error);
@@ -411,6 +451,9 @@ class IdeasController {
 
       if (status === 'rejected' && rejection_reason) {
         updateData.rejection_reason = rejection_reason;
+        // Automatically archive rejected ideas
+        updateData.archived = true;
+        updateData.archived_at = new Date().toISOString();
       }
 
       const { data: idea, error } = await supabaseAdmin
@@ -773,6 +816,131 @@ class IdeasController {
           { id: 'health', name: 'Sağlık', description: 'Sağlık ve yaşam kalitesi projeleri' }
         ],
         message: 'Idea categories retrieved successfully'
+      } as ApiResponse);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Archive Management
+  async archiveIdea(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+
+      if (!supabaseAdmin) {
+        return res.status(500).json({
+          success: false,
+          error: 'Sunucu yapılandırma hatası. Lütfen sistem yöneticisine başvurun.',
+          code: 'SERVICE_ROLE_MISSING'
+        } as ApiResponse);
+      }
+
+      // Only admins can archive ideas
+      if (!req.user || req.user.role !== 'admin') {
+        return res.status(403).json({
+          success: false,
+          error: 'Bu işlem için yönetici yetkisi gereklidir.',
+          code: 'ADMIN_ONLY'
+        } as ApiResponse);
+      }
+
+      const { data: idea, error } = await supabaseAdmin
+        .from('idea_submissions' as any)
+        .update({
+          archived: true,
+          archived_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select('*')
+        .single();
+
+      if (error) {
+        console.error('❌ Failed to archive idea:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Case başvurusu arşivlenemedi. Lütfen tekrar deneyin.',
+          code: 'ARCHIVE_FAILED',
+          details: error.message
+        } as ApiResponse);
+      }
+
+      if (!idea) {
+        return res.status(404).json({
+          success: false,
+          error: 'Case başvurusu bulunamadı.',
+          code: 'IDEA_NOT_FOUND'
+        } as ApiResponse);
+      }
+
+      const mappedIdea = this.mapIdeaToFrontend(idea);
+
+      res.json({
+        success: true,
+        data: mappedIdea,
+        message: 'Case başvurusu arşive taşındı'
+      } as ApiResponse);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async unarchiveIdea(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+
+      if (!supabaseAdmin) {
+        return res.status(500).json({
+          success: false,
+          error: 'Sunucu yapılandırma hatası. Lütfen sistem yöneticisine başvurun.',
+          code: 'SERVICE_ROLE_MISSING'
+        } as ApiResponse);
+      }
+
+      // Only admins can unarchive ideas
+      if (!req.user || req.user.role !== 'admin') {
+        return res.status(403).json({
+          success: false,
+          error: 'Bu işlem için yönetici yetkisi gereklidir.',
+          code: 'ADMIN_ONLY'
+        } as ApiResponse);
+      }
+
+      const { data: idea, error } = await supabaseAdmin
+        .from('idea_submissions' as any)
+        .update({
+          archived: false,
+          archived_at: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select('*')
+        .single();
+
+      if (error) {
+        console.error('❌ Failed to unarchive idea:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Case başvurusu geri alınamadı. Lütfen tekrar deneyin.',
+          code: 'UNARCHIVE_FAILED',
+          details: error.message
+        } as ApiResponse);
+      }
+
+      if (!idea) {
+        return res.status(404).json({
+          success: false,
+          error: 'Case başvurusu bulunamadı.',
+          code: 'IDEA_NOT_FOUND'
+        } as ApiResponse);
+      }
+
+      const mappedIdea = this.mapIdeaToFrontend(idea);
+
+      res.json({
+        success: true,
+        data: mappedIdea,
+        message: 'Case başvurusu arşivden geri alındı'
       } as ApiResponse);
     } catch (error) {
       next(error);
