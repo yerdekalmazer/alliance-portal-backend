@@ -130,7 +130,11 @@ router.post('/generate', authMiddleware, adaptiveTechnicalAssessmentController.g
  */
 router.post('/analyze', authMiddleware, adaptiveTechnicalAssessmentController.analyzeAdaptiveAssessment);
 
+// Named export for flexibility
 export { router as adaptiveTechnicalAssessmentRouter };
+
+// Default export for compatibility with other route files
+export default router;
 
 
 
