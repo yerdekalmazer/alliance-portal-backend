@@ -11,7 +11,7 @@ class ApplicationsController {
     this.getApplicationStats = this.getApplicationStats.bind(this);
   }
 
-  // Get all applications
+  // Get all applications (from survey_responses table)
   async getAllApplications(req: Request, res: Response, next: NextFunction) {
     try {
       const { case_id, status, page = '1', limit = '100' } = req.query as Record<string, string>;
@@ -24,19 +24,15 @@ class ApplicationsController {
         } as ApiResponse);
       }
 
+      // Query survey_responses table (where applications are actually stored)
       let query = (supabaseAdmin as any)
-        .from('applications')
+        .from('survey_responses')
         .select(`
           *,
           cases (
             id,
             title,
             description
-          ),
-          survey_responses (
-            id,
-            score,
-            completed_at
           )
         `, { count: 'exact' });
 
@@ -58,7 +54,7 @@ class ApplicationsController {
       const to = from + limitNum - 1;
       query = query.range(from, to);
 
-      const { data: applications, error, count } = await query;
+      const { data: surveyResponses, error, count } = await query;
 
       if (error) {
         console.error('Database error:', error);
@@ -68,6 +64,30 @@ class ApplicationsController {
           code: 'FETCH_FAILED'
         } as ApiResponse);
       }
+
+      // Transform survey_responses to application format
+      const applications = surveyResponses?.map((sr: any) => ({
+        id: sr.id,
+        case_id: sr.case_id,
+        participant_name: sr.participant_name,
+        participant_email: sr.participant_email,
+        full_name: sr.participant_name, // Alias for compatibility
+        score: sr.score,
+        status: sr.status,
+        responses: sr.responses,
+        questions: sr.questions,
+        technical_details: sr.technical_details,
+        category_scores: sr.category_scores,
+        completed_at: sr.completed_at,
+        submitted_at: sr.submitted_at,
+        created_at: sr.created_at,
+        cases: sr.cases,
+        // Additional fields
+        survey_template_id: sr.survey_template_id,
+        leadership_type: sr.leadership_type
+      })) || [];
+
+      console.log(`✅ Fetched ${applications.length} applications from survey_responses table`);
 
       res.json({
         success: true,

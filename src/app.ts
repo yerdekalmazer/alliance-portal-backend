@@ -19,6 +19,7 @@ import allianceApplicationsRoutes from './routes/allianceApplications';
 import alliancePartnersRoutes from './routes/alliancePartners';
 import caseProposalsRoutes from './routes/caseProposals';
 import adaptiveTechnicalAssessmentRoutes from './routes/adaptiveTechnicalAssessment';
+import archivedCasesRoutes from './routes/archivedCases';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -272,6 +273,7 @@ app.use('/api/alliance-applications', allianceApplicationsRoutes);
 app.use('/api/alliance-partners', alliancePartnersRoutes);
 app.use('/api/case-proposals', caseProposalsRoutes);
 app.use('/api/adaptive-technical-assessment', adaptiveTechnicalAssessmentRoutes);
+app.use('/api/archived-cases', archivedCasesRoutes);
 
 // 404 handler
 app.use(notFound);

@@ -40,7 +40,7 @@ class SurveyController {
       console.log('🔄 getSurveyTemplates called');
       
       if (!supabaseAdmin) {
-        console.log('❌ supabaseAdmin not configured');
+        console.log('supabaseAdmin not configured');
         return res.status(500).json({
           success: false,
           error: 'Service role key not configured',
