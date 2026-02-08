@@ -556,6 +556,7 @@ class SurveyController {
             finalCustomizations = {
               ...customizations,
               preGeneratedQuestions: generatedData.data.jobTypeGroups,
+              leadershipQuestions: generatedData.data.leadershipQuestions, // Liderlik sorularını da kaydet
               assessmentConfig: generatedData.data.config,
               isPreGenerated: true
             };

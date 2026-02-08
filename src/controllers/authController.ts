@@ -42,11 +42,11 @@ class AuthController {
       if (error) {
         // Log the actual error for debugging
         console.error('Login error from Supabase:', error);
-        
+
         // Provide more specific error messages based on the error type
         let errorMessage = 'Giriş başarısız oldu';
         let errorCode = 'LOGIN_FAILED';
-        
+
         if (error.message.includes('Invalid login credentials')) {
           errorMessage = 'E-posta veya şifre hatalı. Lütfen bilgilerinizi kontrol edin.';
           errorCode = 'INVALID_CREDENTIALS';
@@ -64,7 +64,7 @@ class AuthController {
           errorMessage = 'Giriş yapılamadı. Lütfen bilgilerinizi kontrol edip tekrar deneyin.';
           errorCode = 'LOGIN_ERROR';
         }
-        
+
         return res.status(401).json({
           success: false,
           error: errorMessage,
@@ -137,11 +137,11 @@ class AuthController {
       if (error) {
         // Log the actual error for debugging
         console.error('Registration error from Supabase:', error);
-        
+
         // Provide more specific error messages
         let errorMessage = 'Kayıt işlemi başarısız oldu';
         let errorCode = 'REGISTRATION_FAILED';
-        
+
         if (error.message.includes('already registered') || error.message.includes('already exists')) {
           errorMessage = 'Bu e-posta adresi zaten kullanılıyor. Lütfen farklı bir e-posta adresi deneyin.';
           errorCode = 'EMAIL_ALREADY_EXISTS';
@@ -155,7 +155,7 @@ class AuthController {
           errorMessage = error.message || 'Kayıt işlemi başarısız oldu. Lütfen tekrar deneyin.';
           errorCode = 'REGISTRATION_FAILED';
         }
-        
+
         return res.status(400).json({
           success: false,
           error: errorMessage,
@@ -196,7 +196,7 @@ class AuthController {
         if (supabaseAdmin) {
           await supabaseAdmin.auth.admin.deleteUser(data.user.id);
         }
-        
+
         return res.status(500).json({
           success: false,
           error: 'Kullanıcı profili oluşturulamadı. Lütfen tekrar deneyin.',
@@ -222,7 +222,7 @@ class AuthController {
   async getProfile(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user;
-      
+
       res.json({
         success: true,
         data: user,
@@ -257,9 +257,9 @@ class AuthController {
 
       const { data, error } = await supabase
         .from('users')
-        .update({ 
-          name, 
-          updated_at: new Date().toISOString() 
+        .update({
+          name,
+          updated_at: new Date().toISOString()
         })
         .eq('id', userId)
         .select()
@@ -515,10 +515,10 @@ class AuthController {
       }
 
       // Get query parameters for filtering and searching
-      const { 
-        search, 
-        role, 
-        page = 1, 
+      const {
+        search,
+        role,
+        page = 1,
         limit = 100,
         sort_by = 'created_at',
         sort_order = 'desc'
@@ -546,7 +546,7 @@ class AuthController {
       const pageNum = parseInt(page as string);
       const limitNum = Math.min(parseInt(limit as string), 100);
       const offset = (pageNum - 1) * limitNum;
-      
+
       if (pageNum > 1) {
         query = query.range(offset, offset + limitNum - 1);
       } else {
@@ -622,7 +622,7 @@ class AuthController {
 
       const { data, error } = await supabaseAdmin
         .from('users')
-        .update({ 
+        .update({
           role: role as 'admin' | 'alliance' | 'user',
           updated_at: new Date().toISOString()
         })

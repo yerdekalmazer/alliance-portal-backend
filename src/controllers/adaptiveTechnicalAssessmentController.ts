@@ -7,7 +7,9 @@ interface AdaptiveAssessmentConfig {
   minCorrectAnswers: number; // 1
   enableAdvancedAccess: boolean; // true
   showProgressIndicator: boolean; // true
-  phases: string[]; // ['basic', 'advanced', 'leadership', 'character']
+  phases: string[]; // ['basic', 'advanced', 'leadership']
+  advancementRule: 'one_correct' | 'threshold'; // En az 1 doğru ya da %threshold
+  leadershipTrigger: 'all_complete' | 'any_complete'; // Tüm specializations ya da herhangi biri
 }
 
 interface AdaptiveQuestion {
@@ -26,8 +28,6 @@ interface AdaptiveJobTypeGroup {
   jobType: string;
   basicQuestions: AdaptiveQuestion[];
   advancedQuestions: AdaptiveQuestion[];
-  leadershipQuestions: AdaptiveQuestion[];
-  characterQuestions: AdaptiveQuestion[];
 }
 
 interface AdaptivePhaseScore {
@@ -39,7 +39,7 @@ interface AdaptivePhaseScore {
 
 interface AdaptiveAssessmentState {
   currentJobType: string;
-  currentPhase: 'basic' | 'advanced' | 'leadership' | 'character';
+  currentPhase: 'basic' | 'advanced' | 'leadership';
   phaseScores: Record<string, AdaptivePhaseScore>;
   responses: Record<string, any>;
 }
@@ -50,8 +50,31 @@ class AdaptiveTechnicalAssessmentController {
     minCorrectAnswers: 1,
     enableAdvancedAccess: true,
     showProgressIndicator: true,
-    phases: ['basic', 'advanced', 'leadership', 'character']
+    phases: ['basic', 'advanced', 'leadership'],
+    advancementRule: 'one_correct', // En az 1 doğru cevap ile ileri seviyeye geç
+    leadershipTrigger: 'all_complete' // Tüm specializations tamamlanınca liderlik soruları
   };
+
+  // Liderlik soruları gerektiren roller (büyük/küçük harf duyarsız)
+  private readonly leadershipEligibleRoles = [
+    'frontend developer',
+    'backend developer',
+    'full stack developer',
+    'fullstack developer',
+    'software engineer',
+    'lead developer',
+    'tech lead',
+    'engineering manager',
+    'web platformu'
+  ];
+
+  // Bir job type'ın liderlik soruları alıp almayacağını kontrol et
+  private isLeadershipEligible(jobType: string): boolean {
+    const normalizedJobType = jobType.trim().toLowerCase();
+    return this.leadershipEligibleRoles.some(role => 
+      normalizedJobType.includes(role) || role.includes(normalizedJobType)
+    );
+  }
 
   // Aşamalı teknik değerlendirme anketi oluştur
   generateAdaptiveAssessment = async (req: Request, res: Response, next: NextFunction) => {
@@ -70,54 +93,53 @@ class AdaptiveTechnicalAssessmentController {
 
       const allJobTypeGroups: AdaptiveJobTypeGroup[] = [];
 
-      // Her job type için aşamalı sorular oluştur
+      // Leadership sorularını sadece bir kez çek (sadece liderlik gerektiren roller için)
+      // Önce hangi job type'ların liderlik gerektirdiğini kontrol et
+      const needsLeadership = job_types.some((jt: string) => this.isLeadershipEligible(jt));
+      let sharedLeadershipQuestions: AdaptiveQuestion[] = [];
+      
+      if (needsLeadership) {
+        console.log(`🔍 Leadership sorular aranıyor (liderlik gerektiren roller var)...`);
+        sharedLeadershipQuestions = await this.getPhaseQuestions('All', 'leadership-scenarios', 5);
+        console.log(`✅ Leadership sorular bulundu:`, sharedLeadershipQuestions?.length || 0);
+      } else {
+        console.log(`ℹ️ Hiçbir rol liderlik soruları gerektirmiyor (QA, UI/UX gibi roller)`);
+      }
+
+      // Her job type için aşamalı sorular oluştur (SADECE İLK AŞAMA VE İLERİ)
       for (const jobType of job_types) {
-        console.log(`📝 ${jobType} için aşamalı sorular hazırlanıyor...`);
+        console.log(`📝 ${jobType} için sorular hazırlanıyor...`);
         
-        // Basic Technical Questions - MEVCUT KATEGORİ  
+        // Basic Technical Questions - İLK AŞAMA
         console.log(`🔍 ${jobType} için basic sorular aranıyor (first-stage-technical)...`);
         const basicQuestions = await this.getPhaseQuestions(jobType, 'first-stage-technical', 2);
         console.log(`✅ ${jobType} basic sorular bulundu:`, basicQuestions?.length || 0);
         
-        // Advanced Technical Questions - MEVCUT KATEGORİ
+        // Advanced Technical Questions - İLERİ
         console.log(`🔍 ${jobType} için advanced sorular aranıyor (advanced-technical)...`);
         const advancedQuestions = await this.getPhaseQuestions(jobType, 'advanced-technical', 3);
         console.log(`✅ ${jobType} advanced sorular bulundu:`, advancedQuestions?.length || 0);
 
-        // Leadership Questions - MEVCUT KATEGORİ
-        console.log(`🔍 Leadership sorular aranıyor (leadership-scenarios)...`);
-        const leadershipQuestions = await this.getPhaseQuestions('All', 'leadership-scenarios', 5);
-        console.log(`✅ Leadership sorular bulundu:`, leadershipQuestions?.length || 0);
-
-        // Character Questions - MEVCUT KATEGORİ
-        console.log(`🔍 Character sorular aranıyor (character-analysis)...`);
-        const characterQuestions = await this.getPhaseQuestions('All', 'character-analysis', 5);
-        console.log(`✅ Character sorular bulundu:`, characterQuestions?.length || 0);
-
         const jobTypeGroup: AdaptiveJobTypeGroup = {
           jobType,
           basicQuestions: basicQuestions || [],
-          advancedQuestions: advancedQuestions || [],
-          leadershipQuestions: leadershipQuestions || [],
-          characterQuestions: characterQuestions || []
+          advancedQuestions: advancedQuestions || []
         };
 
         allJobTypeGroups.push(jobTypeGroup);
 
         console.log(`📊 ${jobType} FINAL soru dağılımı:`, {
           basic: jobTypeGroup.basicQuestions.length,
-          advanced: jobTypeGroup.advancedQuestions.length,  
-          leadership: jobTypeGroup.leadershipQuestions.length,
-          character: jobTypeGroup.characterQuestions.length
+          advanced: jobTypeGroup.advancedQuestions.length
         });
       }
 
       console.log('✅ Aşamalı teknik değerlendirme anketi hazırlandı:', {
         jobTypes: job_types.length,
-        totalQuestions: allJobTypeGroups.reduce((sum, group) => 
-          sum + group.basicQuestions.length + group.advancedQuestions.length + 
-          group.leadershipQuestions.length + group.characterQuestions.length, 0
+        totalTechnicalQuestions: allJobTypeGroups.reduce((sum, group) => 
+          sum + group.basicQuestions.length + group.advancedQuestions.length, 0
         ),
+        leadershipQuestions: sharedLeadershipQuestions.length,
         config: this.config
       });
 
@@ -125,6 +147,7 @@ class AdaptiveTechnicalAssessmentController {
         success: true,
         data: {
           jobTypeGroups: allJobTypeGroups,
+          leadershipQuestions: sharedLeadershipQuestions, // Ayrı bir field olarak
           config: this.config,
           assessmentType: 'adaptive-technical-assessment'
         },
@@ -270,25 +293,6 @@ class AdaptiveTechnicalAssessmentController {
           };
           break;
 
-        case 'character-analysis':
-          question = {
-            id: questionId,
-            type: 'multiple-choice',
-            question: `Karakter analizi ${i + 1}: Zor bir durumda kaldığınızda ne yaparsınız?`,
-            options: [
-              'Panik yaparım',
-              'Sakin kalır ve analiz yaparım',
-              'Başkalarından yardım isterim',
-              'Durumu görmezden gelirim'
-            ],
-            correct: [1],
-            points: 8,
-            difficulty: 'Easy',
-            category: 'character-analysis',
-            jobType: 'All'
-          };
-          break;
-
         default:
           question = {
             id: questionId,
@@ -397,7 +401,6 @@ class AdaptiveTechnicalAssessmentController {
     const basicPhase = phaseScores[`${jobType}_basic`] || { score: 0, maxScore: 0, percentage: 0 };
     const advancedPhase = phaseScores[`${jobType}_advanced`] || { score: 0, maxScore: 0, percentage: 0 };
     const leadershipPhase = phaseScores[`${jobType}_leadership`] || { score: 0, maxScore: 0, percentage: 0 };
-    const characterPhase = phaseScores[`${jobType}_character`] || { score: 0, maxScore: 0, percentage: 0 };
 
     // Advanced erişim kontrolü
     const hasAdvancedAccess = basicPhase.percentage >= this.config.basicSuccessThreshold || 
@@ -424,10 +427,6 @@ class AdaptiveTechnicalAssessmentController {
         status: leadershipPhase.percentage >= 70 ? 'excellent' : 
                 leadershipPhase.percentage >= 50 ? 'good' : 
                 leadershipPhase.percentage >= 30 ? 'needs_improvement' : 'poor'
-      },
-      character: {
-        ...characterPhase,
-        status: 'completed' // Karakter analizi her zaman tamamlanır
       }
     };
 

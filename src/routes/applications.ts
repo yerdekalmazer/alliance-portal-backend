@@ -7,6 +7,9 @@ const router = Router();
 // Get all applications (admin/alliance only)
 router.get('/', authMiddleware, requireAdmin, applicationsController.getAllApplications);
 
+// Create application (e.g. Excel import)
+router.post('/', authMiddleware, requireAdmin, applicationsController.createApplication);
+
 // Get application by ID (admin/alliance only)
 router.get('/:id', authMiddleware, requireAdmin, applicationsController.getApplicationById);
 

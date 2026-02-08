@@ -559,15 +559,21 @@ export function calculateAssessmentScore(
         const scoring = (question as any).leadershipScoring[userAnswer];
         
         if (leadershipType && scoring) {
-          questionScore = scoring.points || 20;
-          console.log(`🎯 Leadership scoring: ${leadershipType} = ${questionScore} points`);
+          questionScore = scoring.points || question.points || 20; // ✅ DÜZELTME: question.points kullan
+          console.log(`🎯 Leadership scoring: ${leadershipType} = ${questionScore} points (from ${question.points ? 'question.points' : 'default'})`);
         } else {
-          questionScore = 20;
+          questionScore = question.points || 20; // ✅ DÜZELTME: question.points kullan
         }
       } else {
-        const leadershipScores = [18, 20, 19, 21];
-        questionScore = leadershipScores[userAnswer] || 20;
-        console.log(`🎯 Default leadership scoring: ${questionScore} points`);
+        // ✅ DÜZELTME: Önce question.points'e bak
+        if (question.points && typeof question.points === 'number') {
+          questionScore = question.points;
+          console.log(`🎯 Leadership scoring (question.points): ${questionScore} points`);
+        } else {
+          const leadershipScores = [18, 20, 19, 21];
+          questionScore = leadershipScores[userAnswer] || 20;
+          console.log(`🎯 Default leadership scoring: ${questionScore} points`);
+        }
       }
       
       isCorrect = true;
@@ -591,13 +597,23 @@ export function calculateAssessmentScore(
           questionScore = Math.round(totalCategoryScore / categoryCount);
         }
       } else {
+        // Category-based scoring - use AVERAGE to prevent double counting
+        let totalCategoryScore = 0;
+        let categoryCount = 0;
+        
         Object.keys(question.points).forEach(category => {
           if (question.points[category] && question.points[category][userAnswer] !== undefined) {
             const score = question.points[category][userAnswer];
             categoryScores[category] = (categoryScores[category] || 0) + score;
-            questionScore += score;
+            totalCategoryScore += score;
+            categoryCount++;
           }
         });
+        
+        // Use average to prevent score inflation when multiple categories exist
+        if (categoryCount > 0) {
+          questionScore = Math.round(totalCategoryScore / categoryCount);
+        }
       }
     } else {
       if (!(question.category === 'leadership-scenarios' || question.sourceCategory === 'leadership-scenarios')) {
@@ -636,14 +652,20 @@ export function calculateAssessmentScore(
         
         maxQuestionScore = maxCategoryScore;
       } else {
-        let maxCategoryScore = 0;
+        // Category-based scoring - find AVERAGE max across all categories
+        let totalMaxScore = 0;
+        let categoryCount = 0;
+        
         Object.keys(question.points).forEach(category => {
           if (question.points[category] && Array.isArray(question.points[category])) {
             const categoryMax = Math.max(...question.points[category]);
-            maxCategoryScore = Math.max(maxCategoryScore, categoryMax);
+            totalMaxScore += categoryMax;
+            categoryCount++;
           }
         });
-        maxQuestionScore = maxCategoryScore;
+        
+        // Use average to match the average scoring method
+        maxQuestionScore = categoryCount > 0 ? Math.round(totalMaxScore / categoryCount) : 10;
       }
     } else if (typeof question.points === 'number') {
       maxQuestionScore = question.points;

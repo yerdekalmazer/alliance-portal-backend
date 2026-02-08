@@ -7,11 +7,76 @@ class ApplicationsController {
     // Bind all methods to ensure 'this' context is preserved
     this.getAllApplications = this.getAllApplications.bind(this);
     this.getApplicationById = this.getApplicationById.bind(this);
+    this.createApplication = this.createApplication.bind(this);
     this.updateApplicationStatus = this.updateApplicationStatus.bind(this);
     this.getApplicationStats = this.getApplicationStats.bind(this);
   }
 
-  // Get all applications (from survey_responses table)
+  // Create application (e.g. from Excel import)
+  async createApplication(req: Request, res: Response, next: NextFunction) {
+    try {
+      const body = req.body as any;
+
+      if (!supabaseAdmin) {
+        return res.status(500).json({
+          success: false,
+          error: 'Service role key not configured',
+          code: 'SERVICE_ROLE_MISSING'
+        } as ApiResponse);
+      }
+
+      const case_id = body.case_id;
+      const participant_name = body.participant_name;
+      const participant_email = body.participant_email;
+
+      if (!case_id || !participant_name || !participant_email) {
+        return res.status(400).json({
+          success: false,
+          error: 'case_id, participant_name and participant_email are required',
+          code: 'VALIDATION_ERROR'
+        } as ApiResponse);
+      }
+
+      const insertPayload: Record<string, unknown> = {
+        case_id,
+        participant_name,
+        participant_email,
+        status: body.status || 'pending',
+        score: body.score ?? null,
+        threshold_met: body.threshold_met ?? false,
+        personal_info: body.personal_info ?? {},
+        assessment_responses: body.assessment_responses ?? {},
+        notes: body.notes ?? null,
+        updated_at: new Date().toISOString()
+      };
+
+      const { data: created, error } = await (supabaseAdmin as any)
+        .from('applications')
+        .insert(insertPayload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Create application error:', error);
+        return res.status(500).json({
+          success: false,
+          error: error.message || 'Failed to create application',
+          code: 'CREATE_FAILED'
+        } as ApiResponse);
+      }
+
+      console.log('Application created:', created?.id, participant_name);
+
+      res.status(201).json({
+        success: true,
+        data: created
+      } as ApiResponse);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Get all applications (from both survey_responses and adaptive_assessment_responses tables)
   async getAllApplications(req: Request, res: Response, next: NextFunction) {
     try {
       const { case_id, status, page = '1', limit = '100' } = req.query as Record<string, string>;
@@ -24,8 +89,8 @@ class ApplicationsController {
         } as ApiResponse);
       }
 
-      // Query survey_responses table (where applications are actually stored)
-      let query = (supabaseAdmin as any)
+      // 1. Query survey_responses table (regular survey applications)
+      let surveyQuery = (supabaseAdmin as any)
         .from('survey_responses')
         .select(`
           *,
@@ -34,44 +99,89 @@ class ApplicationsController {
             title,
             description
           )
-        `, { count: 'exact' });
+        `);
 
-      // Apply filters
       if (case_id) {
-        query = query.eq('case_id', case_id);
+        surveyQuery = surveyQuery.eq('case_id', case_id);
       }
       if (status) {
-        query = query.eq('status', status);
+        surveyQuery = surveyQuery.eq('status', status);
       }
 
-      // Sorting
-      query = query.order('created_at', { ascending: false });
+      const { data: surveyResponses, error: surveyError } = await surveyQuery;
 
-      // Pagination
-      const pageNum = Math.max(1, parseInt(page) || 1);
-      const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 100));
-      const from = (pageNum - 1) * limitNum;
-      const to = from + limitNum - 1;
-      query = query.range(from, to);
-
-      const { data: surveyResponses, error, count } = await query;
-
-      if (error) {
-        console.error('Database error:', error);
-        return res.status(500).json({
-          success: false,
-          error: 'Failed to fetch applications',
-          code: 'FETCH_FAILED'
-        } as ApiResponse);
+      if (surveyError) {
+        console.error('❌ Survey responses fetch error:', surveyError);
       }
+
+      // 2. Query adaptive_assessment_responses table (adaptive assessments)
+      let adaptiveQuery = (supabaseAdmin as any)
+        .from('adaptive_assessment_responses')
+        .select(`
+          *,
+          cases (
+            id,
+            title,
+            description
+          )
+        `);
+
+      if (case_id) {
+        adaptiveQuery = adaptiveQuery.eq('case_id', case_id);
+      }
+      if (status) {
+        adaptiveQuery = adaptiveQuery.eq('status', status);
+      }
+
+      const { data: adaptiveResponses, error: adaptiveError } = await adaptiveQuery;
+
+      if (adaptiveError) {
+        console.error('❌ Adaptive responses fetch error:', adaptiveError);
+      }
+
+      // 3. Query applications table (Excel import / manual entries)
+      let directQuery = (supabaseAdmin as any)
+        .from('applications')
+        .select('*');
+
+      if (case_id) {
+        directQuery = directQuery.eq('case_id', case_id);
+      }
+      if (status) {
+        directQuery = directQuery.eq('status', status);
+      }
+
+      const { data: directApplications, error: directError } = await directQuery;
+
+      if (directError) {
+        console.error('❌ Applications table fetch error:', directError);
+      }
+
+      // Transform applications table to same format
+      const directAppsFormatted = (directApplications || []).map((app: any) => ({
+        id: app.id,
+        case_id: app.case_id,
+        participant_name: app.participant_name,
+        participant_email: app.participant_email,
+        full_name: app.participant_name,
+        score: app.score ?? 0,
+        status: app.status,
+        threshold_met: app.threshold_met ?? false,
+        personal_info: app.personal_info,
+        assessment_responses: app.assessment_responses,
+        notes: app.notes,
+        created_at: app.created_at,
+        updated_at: app.updated_at,
+        assessment_type: 'excel-import'
+      }));
 
       // Transform survey_responses to application format
-      const applications = surveyResponses?.map((sr: any) => ({
+      const surveyApplications = surveyResponses?.map((sr: any) => ({
         id: sr.id,
         case_id: sr.case_id,
         participant_name: sr.participant_name,
         participant_email: sr.participant_email,
-        full_name: sr.participant_name, // Alias for compatibility
+        full_name: sr.participant_name,
         score: sr.score,
         status: sr.status,
         responses: sr.responses,
@@ -82,21 +192,63 @@ class ApplicationsController {
         submitted_at: sr.submitted_at,
         created_at: sr.created_at,
         cases: sr.cases,
-        // Additional fields
         survey_template_id: sr.survey_template_id,
-        leadership_type: sr.leadership_type
+        leadership_type: sr.leadership_type,
+        assessment_type: 'survey',
+        threshold_met: sr.threshold_met
       })) || [];
 
-      console.log(`✅ Fetched ${applications.length} applications from survey_responses table`);
+      // Transform adaptive_assessment_responses to application format
+      const adaptiveApplications = adaptiveResponses?.map((ar: any) => ({
+        id: ar.id,
+        case_id: ar.case_id,
+        participant_name: ar.participant_name,
+        participant_email: ar.participant_email,
+        full_name: ar.participant_name,
+        score: ar.overall_percentage || 0, // Use percentage as score
+        status: ar.status,
+        responses: ar.raw_responses,
+        questions: [], // Adaptive doesn't have static questions
+        technical_details: ar.analysis_results,
+        category_scores: ar.phase_scores,
+        completed_at: ar.completed_at,
+        submitted_at: ar.submitted_at,
+        created_at: ar.created_at,
+        cases: ar.cases,
+        survey_template_id: 'adaptive-technical-assessment',
+        assessment_type: 'adaptive-technical-assessment',
+        overall_percentage: ar.overall_percentage,
+        raw_adaptive_data: {
+          phase_scores: ar.phase_scores,
+          analysis_results: ar.analysis_results,
+          phase_completion_status: ar.phase_completion_status,
+          strongest_areas: ar.strongest_areas,
+          improvement_areas: ar.improvement_areas
+        },
+        threshold_met: (ar.overall_percentage || 0) >= 50 // Assume 50% threshold
+      })) || [];
+
+      // Combine all three sources and sort by created_at
+      const allApplications = [...surveyApplications, ...adaptiveApplications, ...directAppsFormatted]
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+
+      // Apply pagination after combining
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 100));
+      const from = (pageNum - 1) * limitNum;
+      const to = from + limitNum;
+      const paginatedApplications = allApplications.slice(from, to);
+
+      console.log(`✅ Fetched ${surveyApplications.length} survey responses + ${adaptiveApplications.length} adaptive assessments = ${allApplications.length} total applications`);
 
       res.json({
         success: true,
-        data: applications,
+        data: paginatedApplications,
         pagination: {
           page: pageNum,
           limit: limitNum,
-          total: count || 0,
-          pages: Math.ceil((count || 0) / limitNum)
+          total: allApplications.length,
+          pages: Math.ceil(allApplications.length / limitNum)
         },
         message: 'Applications retrieved successfully'
       } as ApiResponse<any>);
