@@ -237,7 +237,7 @@ class AuthController {
   async updateProfile(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.userId;
-      const { name } = req.body;
+      const { name, newPassword } = req.body;
 
       if (!userId) {
         return res.status(401).json({
@@ -247,35 +247,85 @@ class AuthController {
         } as ApiResponse);
       }
 
-      if (!name) {
+      if (!name && !newPassword) {
         return res.status(400).json({
           success: false,
-          error: 'İsim alanı zorunludur.',
-          code: 'MISSING_NAME'
+          error: 'Güncellenecek bilgi (isim veya şifre) bulunamadı.',
+          code: 'MISSING_UPDATE_DATA'
         } as ApiResponse);
       }
 
-      const { data, error } = await supabase
-        .from('users')
-        .update({
-          name,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', userId)
-        .select()
-        .single();
-
-      if (error) {
+      if (!supabaseAdmin) {
         return res.status(500).json({
           success: false,
-          error: 'Profil güncellenemedi. Lütfen tekrar deneyin.',
-          code: 'UPDATE_FAILED'
+          error: 'Sunucu yapılandırma hatası. Lütfen sistem yöneticisine başvurun.',
+          code: 'SERVICE_ROLE_MISSING'
         } as ApiResponse);
+      }
+
+      // 1. Update Password if provided
+      if (newPassword) {
+        if (newPassword.length < 6) {
+          return res.status(400).json({
+            success: false,
+            error: 'Yeni şifre en az 6 karakter olmalıdır.',
+            code: 'WEAK_PASSWORD'
+          } as ApiResponse);
+        }
+
+        const { error: passwordError } = await supabaseAdmin.auth.admin.updateUserById(
+          userId,
+          { password: newPassword }
+        );
+
+        if (passwordError) {
+          console.error('Password update error:', passwordError);
+          return res.status(500).json({
+            success: false,
+            error: 'Şifre güncellenemedi. Lütfen tekrar deneyin.',
+            code: 'PASSWORD_UPDATE_FAILED'
+          } as ApiResponse);
+        }
+      }
+
+      // 2. Update Profile Data in Database (if name is provided)
+      let updatedUser = null;
+
+      if (name) {
+        // Use supabaseAdmin to bypass RLS policies that might be blocking the update
+        const { data, error } = await supabaseAdmin
+          .from('users')
+          .update({
+            name,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', userId)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Profile update error:', error);
+          return res.status(500).json({
+            success: false,
+            error: 'Profil güncellenemedi. Lütfen tekrar deneyin.',
+            code: 'UPDATE_FAILED'
+          } as ApiResponse);
+        }
+        updatedUser = data;
+      } else {
+        // If only password updated, fetch user to return consistent response
+        const { data, error } = await supabaseAdmin
+          .from('users')
+          .select('*')
+          .eq('id', userId)
+          .single();
+
+        if (!error) updatedUser = data;
       }
 
       res.json({
         success: true,
-        data,
+        data: updatedUser,
         message: 'Profil başarıyla güncellendi'
       } as ApiResponse<User>);
 

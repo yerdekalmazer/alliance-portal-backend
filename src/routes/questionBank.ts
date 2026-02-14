@@ -8,7 +8,7 @@ const router = Router();
 router.get('/questions', questionBankController.listQuestions);
 
 // Dynamic questions generation for surveys (public endpoint for surveys)
-router.post('/generate-dynamic', questionBankController.generateDynamicQuestions);
+router.post('/generate-dynamic', (req, res, next) => questionBankController.generateDynamicQuestions(req, res, next));
 
 // Protected write
 router.post('/questions', authMiddleware, requireAdmin, questionBankController.createQuestion);

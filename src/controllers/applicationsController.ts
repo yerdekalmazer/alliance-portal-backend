@@ -393,7 +393,7 @@ class ApplicationsController {
         accepted: applications.filter((app: any) => app.status === 'accepted').length,
         rejected: applications.filter((app: any) => app.status === 'rejected').length,
         thresholdMet: applications.filter((app: any) => app.threshold_met).length,
-        averageScore: applications.length > 0 
+        averageScore: applications.length > 0
           ? Math.round(applications.reduce((sum: number, app: any) => sum + (app.score || 0), 0) / applications.length)
           : 0
       };
@@ -421,45 +421,85 @@ class ApplicationsController {
         } as ApiResponse);
       }
 
-      // Check if application exists
-      const { data: existingApp, error: fetchError } = await (supabaseAdmin as any)
+      // 1. Try applications table
+      const { data: appData, error: appError } = await (supabaseAdmin as any)
         .from('applications')
-        .select('id, participant_name')
+        .select('id')
         .eq('id', id)
         .single();
 
-      if (fetchError) {
-        if (fetchError.code === 'PGRST116') {
-          return res.status(404).json({
-            success: false,
-            error: 'Application not found',
-            code: 'APPLICATION_NOT_FOUND'
-          } as ApiResponse);
+      if (!appError && appData) {
+        const { error: deleteError } = await (supabaseAdmin as any)
+          .from('applications')
+          .delete()
+          .eq('id', id);
+
+        if (deleteError) {
+          console.error('Database deletion error (applications):', deleteError);
+          throw deleteError;
         }
-        throw fetchError;
-      }
 
-      // Delete the application
-      const { error: deleteError } = await (supabaseAdmin as any)
-        .from('applications')
-        .delete()
-        .eq('id', id);
-
-      if (deleteError) {
-        console.error('Database deletion error:', deleteError);
-        return res.status(500).json({
-          success: false,
-          error: 'Failed to delete application',
-          code: 'DELETE_FAILED'
+        return res.json({
+          success: true,
+          message: 'Application deleted successfully'
         } as ApiResponse);
       }
 
-      console.log(`✅ Application deleted: ${existingApp.participant_name} (${id})`);
+      // 2. Try survey_responses table
+      const { data: surveyData, error: surveyError } = await (supabaseAdmin as any)
+        .from('survey_responses')
+        .select('id')
+        .eq('id', id)
+        .single();
 
-      res.json({
-        success: true,
-        message: 'Application deleted successfully'
+      if (!surveyError && surveyData) {
+        const { error: deleteError } = await (supabaseAdmin as any)
+          .from('survey_responses')
+          .delete()
+          .eq('id', id);
+
+        if (deleteError) {
+          console.error('Database deletion error (survey_responses):', deleteError);
+          throw deleteError;
+        }
+
+        return res.json({
+          success: true,
+          message: 'Application deleted successfully'
+        } as ApiResponse);
+      }
+
+      // 3. Try adaptive_assessment_responses table
+      const { data: adaptiveData, error: adaptiveError } = await (supabaseAdmin as any)
+        .from('adaptive_assessment_responses')
+        .select('id')
+        .eq('id', id)
+        .single();
+
+      if (!adaptiveError && adaptiveData) {
+        const { error: deleteError } = await (supabaseAdmin as any)
+          .from('adaptive_assessment_responses')
+          .delete()
+          .eq('id', id);
+
+        if (deleteError) {
+          console.error('Database deletion error (adaptive_assessment_responses):', deleteError);
+          throw deleteError;
+        }
+
+        return res.json({
+          success: true,
+          message: 'Application deleted successfully'
+        } as ApiResponse);
+      }
+
+      // If we get here, it wasn't found in any table
+      return res.status(404).json({
+        success: false,
+        error: 'Application not found',
+        code: 'APPLICATION_NOT_FOUND'
       } as ApiResponse);
+
     } catch (error) {
       next(error);
     }

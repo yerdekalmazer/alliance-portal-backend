@@ -40,44 +40,89 @@ export class QuestionBankController {
       // Kişisel bilgi sorularını oluştur (sabit)
       const personalQuestions = this.getPersonalInfoQuestions();
 
-      // Domain'e göre initial-assessment sorularını getir
-      let domainQuestions: any[] = [];
-      
-      if (domain) {
-        console.log(`🔍 ${domain} domain'i için sorular aranıyor...`);
-        
-        let query = supabaseAdmin
-          .from('question_bank_questions' as any)
-          .select('*')
-          .eq('category', 'initial-assessment');
+      // Domain ve Job Type'a göre initial-assessment sorularını getir
+      let assessmentQuestions: any[] = [];
 
-        // Domain eşleşmesi (esnek)
-        query = query.or(`domain.eq.${domain},domain.is.null`);
+      console.log(`🔍 Sorular aranıyor: Domain=${domain}, JobTypes=${job_types.join(', ')}`);
 
-        const { data: questions, error } = await query;
-        
-        if (error) {
-          console.error('❌ Soru çekme hatası:', error);
-          return res.status(500).json({ success: false, error: error.message });
-        }
+      let query = supabaseAdmin
+        .from('question_bank_questions' as any)
+        .select('*')
+        .in('category', ['initial-assessment', 'Initial Assessment', 'Initial-Assessment', 'initial_assessment']);
 
-        // Domain-spesifik soruları öncelikle al
-        const domainSpecific = questions?.filter((q: any) => q.domain === domain) || [];
-        const general = questions?.filter((q: any) => !q.domain) || [];
-        
-        console.log(`📝 Domain-spesifik sorular: ${domainSpecific.length}, Genel sorular: ${general.length}`);
-        
-        // Önce domain-spesifik, sonra genel sorular
-        const allAvailable = [...domainSpecific, ...general];
-        
-        // Rastgele karıştır ve istenen sayıda seç
-        domainQuestions = this.shuffleArray(allAvailable).slice(0, max_questions);
-        
-        console.log(`✅ Seçilen soru sayısı: ${domainQuestions.length}`);
+      const { data: allQuestions, error } = await query;
+
+      if (error) {
+        console.error('❌ Soru çekme hatası:', error);
+        return res.status(500).json({ success: false, error: error.message });
       }
 
+      if (allQuestions) {
+        // JS tarafında filtreleme (daha esnek kontrol için)
+        assessmentQuestions = allQuestions.filter((q: any) => {
+          // 1. Domain Kontrolü
+          // Domain varsa eşleşmeli, yoksa (q.domain null ise) genel kabul edilir.
+          // ANCAK: Job Type tam eşleşiyorsa domain farketmeksizin kabul etmeliyiz.
+          const domainMatch = domain ? (q.domain === domain || !q.domain) : true;
+
+          // 2. Job Type Kontrolü
+          // Check both job_type (string) and job_types (array)
+          let jobTypeSpecificMatch = false;
+          let jobTypeGeneralMatch = false;
+
+          // Check basic job_type string
+          if (q.job_type) {
+            jobTypeSpecificMatch = job_types.includes(q.job_type);
+            jobTypeGeneralMatch = q.job_type === 'Genel' || q.job_type === 'All';
+          }
+
+          // Check job_types array if it exists
+          if (!jobTypeSpecificMatch && Array.isArray(q.job_types)) {
+            jobTypeSpecificMatch = q.job_types.some((jt: string) => job_types.includes(jt));
+          }
+          if (!jobTypeGeneralMatch && Array.isArray(q.job_types)) {
+            jobTypeGeneralMatch = q.job_types.some((jt: string) => jt === 'Genel' || jt === 'All');
+          }
+
+          // Also allow if no job type is specified at all
+          if (!q.job_type && (!q.job_types || q.job_types.length === 0)) {
+            jobTypeGeneralMatch = true;
+          }
+
+          if (jobTypeSpecificMatch) return true; // Job type uyuyorsa domain'e bakma
+
+          return domainMatch && jobTypeGeneralMatch;
+        });
+
+        console.log('🔍 ALL Questions found:', allQuestions.length);
+        console.log('🔍 Filtered Questions:', assessmentQuestions.length);
+        if (allQuestions.length > 0 && assessmentQuestions.length === 0) {
+          console.log('⚠️ Filter dropped all questions. Sample question:', allQuestions[0]);
+          console.log('⚠️ Filter criteria:', { domain, job_types });
+        }
+
+        console.log(`✅ Filtreleme sonucu: ${allQuestions.length} -> ${assessmentQuestions.length} soru`);
+
+        // Önceliklendirme:
+        // 1. Tam eşleşenler (Domain VE JobType)
+        // 2. Sadece Domain eşleşenler
+        // 3. Sadece JobType eşleşenler
+        // 4. Genel sorular
+
+        assessmentQuestions.sort((a, b) => {
+          const aScore = (a.domain === domain ? 2 : 0) + (job_types.includes(a.job_type) ? 2 : 0);
+          const bScore = (b.domain === domain ? 2 : 0) + (job_types.includes(b.job_type) ? 2 : 0);
+          return bScore - aScore; // Puanı yüksek olan önce gelir
+        });
+      }
+
+      // Rastgele karıştır ve en fazla max_questions kadar al
+      const selectedQuestions = this.shuffleArray(assessmentQuestions).slice(0, max_questions);
+
+      console.log(`✅ Seçilen soru sayısı: ${selectedQuestions.length}`);
+
       // Soruları frontend formatına çevir
-      const formattedQuestions = domainQuestions.map((q, index) => ({
+      const formattedQuestions = selectedQuestions.map((q, index) => ({
         id: q.id,
         type: this.mapQuestionType(q.type),
         question: q.question,
@@ -93,24 +138,25 @@ export class QuestionBankController {
       }));
 
       // Kişisel sorular + domain soruları
-      const allQuestions = [...personalQuestions, ...formattedQuestions];
+      const finalQuestions = [...personalQuestions, ...formattedQuestions];
 
-      console.log(`🎯 Toplam dinamik soru hazırlandı: ${allQuestions.length}`);
+      console.log(`🎯 Toplam dinamik soru hazırlandı: ${finalQuestions.length}`);
 
       return res.json({
         success: true,
         data: {
-          questions: allQuestions,
+          questions: finalQuestions,
           personalQuestionCount: personalQuestions.length,
           assessmentQuestionCount: formattedQuestions.length,
-          domain: domain
+          domain: domain,
+          jobTypes: job_types
         },
         message: 'Dinamik sorular başarıyla oluşturuldu'
       });
 
-    } catch (e) { 
+    } catch (e) {
       console.error('❌ Dynamic questions generation error:', e);
-      next(e); 
+      next(e);
     }
   }
 

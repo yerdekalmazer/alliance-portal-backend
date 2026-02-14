@@ -38,7 +38,7 @@ class SurveyController {
   async getSurveyTemplates(req: Request, res: Response, next: NextFunction) {
     try {
       console.log('🔄 getSurveyTemplates called');
-      
+
       if (!supabaseAdmin) {
         console.log('supabaseAdmin not configured');
         return res.status(500).json({
@@ -373,11 +373,11 @@ class SurveyController {
       }
 
       // Get query parameters for filtering
-      const { 
-        case_id, 
-        template_id, 
+      const {
+        case_id,
+        template_id,
         is_active,
-        page = 1, 
+        page = 1,
         limit = 100,
         sort_by = 'created_at',
         sort_order = 'desc'
@@ -409,7 +409,7 @@ class SurveyController {
       const validSortFields = ['created_at', 'title', 'current_participants'];
       const sortField = validSortFields.includes(sort_by as string) ? sort_by : 'created_at';
       const sortDirection = sort_order === 'asc' ? true : false;
-      
+
       query = query.order(sortField as string, { ascending: sortDirection });
 
       // Apply pagination
@@ -530,7 +530,7 @@ class SurveyController {
       if (templateData?.type === 'adaptive-technical-assessment') {
         // Import adaptive controller instance to generate questions
         const { adaptiveTechnicalAssessmentController } = require('./adaptiveTechnicalAssessmentController');
-        
+
         try {
           // Generate questions once for this survey link
           const mockReq = {
@@ -539,7 +539,7 @@ class SurveyController {
               job_types: customizations?.job_types || ['Frontend Developer']
             }
           };
-          
+
           // Create mock response object to capture data
           let generatedData: any;
           const mockRes = {
@@ -547,10 +547,10 @@ class SurveyController {
               generatedData = data;
             }
           };
-          
+
           // Generate questions
-          await adaptiveTechnicalAssessmentController.generateAdaptiveAssessment(mockReq, mockRes, () => {});
-          
+          await adaptiveTechnicalAssessmentController.generateAdaptiveAssessment(mockReq, mockRes, () => { });
+
           if (generatedData?.success && generatedData?.data) {
             // Store generated questions in customizations
             finalCustomizations = {
@@ -569,25 +569,25 @@ class SurveyController {
         console.log('🔀 Dynamic template detected, generating questions...');
         console.log('📊 Template type:', templateData.type);
         console.log('📊 Template is_dynamic:', templateData.is_dynamic);
-        
+
         try {
           // Import survey generation utility
           const { generateDynamicSurveyQuestions } = require('../utils/surveyGeneration');
-          
+
           // Fetch case data to generate questions
           const { data: caseData, error: caseError } = await supabaseAdmin
             .from('cases')
             .select('*')
             .eq('id', case_id)
             .single();
-          
+
           if (caseError || !caseData) {
             console.error('❌ Could not fetch case data for dynamic question generation:', caseError);
           } else {
             console.log('✅ Case data fetched for question generation');
             console.log('📊 Case job_types:', (caseData as any).job_types);
             console.log('📊 Case domain:', (caseData as any).domain);
-            
+
             // Convert database format to CaseScenario format
             const caseScenario = {
               id: caseData.id,
@@ -596,11 +596,11 @@ class SurveyController {
               specializations: (caseData as any).specializations || [],
               domain: (caseData as any).domain || ''
             };
-            
+
             // Generate dynamic questions
             const generatedQuestions = generateDynamicSurveyQuestions(templateData, caseScenario);
             console.log(`✅ Generated ${generatedQuestions.length} dynamic questions`);
-            
+
             // Store generated questions in customizations
             finalCustomizations = {
               ...customizations,
@@ -609,7 +609,7 @@ class SurveyController {
               caseId: case_id,
               generatedAt: new Date().toISOString()
             };
-            
+
             console.log('✅ Dynamic questions stored in customizations');
           }
         } catch (error) {
@@ -873,12 +873,12 @@ class SurveyController {
       }
 
       // Get query parameters for filtering
-      const { 
-        case_id, 
-        survey_template_id, 
+      const {
+        case_id,
+        survey_template_id,
         participant_email,
         status,
-        page = 1, 
+        page = 1,
         limit = 100,
         sort_by = 'created_at',
         sort_order = 'desc'
@@ -909,7 +909,7 @@ class SurveyController {
       const validSortFields = ['created_at', 'completed_at', 'score', 'participant_name'];
       const sortField = validSortFields.includes(sort_by as string) ? sort_by : 'created_at';
       const sortDirection = sort_order === 'asc' ? true : false;
-      
+
       query = query.order(sortField as string, { ascending: sortDirection });
 
       // Apply pagination
@@ -1061,7 +1061,7 @@ class SurveyController {
         leadershipTypeScores = scoreResult.leadershipTypeScores;
         dominantLeadershipType = scoreResult.dominantLeadershipType;
         detailedBreakdown = scoreResult.detailedBreakdown;
-        
+
         console.log('📊 IMPROVED Score calculation completed:', {
           rawScore: scoreResult.totalScore,
           maxPossibleScore: scoreResult.maxPossibleScore,
@@ -1116,8 +1116,24 @@ class SurveyController {
         category_scores: category_scores || calculatedCategoryScores,
         // leadership_type: dominantLeadershipType, // TODO: Uncomment after running migration 022
         completed_at: new Date().toISOString(),
-        submitted_at: new Date().toISOString()
+        submitted_at: new Date().toISOString(),
+        threshold_met: false // Default, will be updated below
       };
+
+      // Calculate threshold_met if case_id is present
+      if (case_id) {
+        const { data: caseData, error: caseError } = await supabaseAdmin
+          .from('cases')
+          .select('initial_threshold')
+          .eq('id', case_id)
+          .single();
+
+        if (!caseError && caseData) {
+          const threshold = caseData.initial_threshold ?? 50; // Default threshold 50 if not set
+          insertData.threshold_met = score >= threshold;
+          console.log(`📊 Threshold check: Score ${score} >= Threshold ${threshold} = ${insertData.threshold_met}`);
+        }
+      }
 
       console.log('💾 Inserting survey response to database:', {
         survey_template_id: insertData.survey_template_id,
@@ -1166,8 +1182,8 @@ class SurveyController {
 
       // Update survey link participant count if applicable
       if (case_id) {
-        await supabaseAdmin.rpc('increment_survey_participants' as any, { 
-          survey_id: case_id 
+        await supabaseAdmin.rpc('increment_survey_participants' as any, {
+          survey_id: case_id
         });
       }
 
@@ -1222,14 +1238,36 @@ class SurveyController {
       if (technical_details !== undefined) updateData.technical_details = technical_details;
       if (category_scores !== undefined) updateData.category_scores = category_scores;
       if (status !== undefined) updateData.status = status;
-      
+
       updateData.score = score;
-      
+
       if (status === 'completed') {
         updateData.completed_at = new Date().toISOString();
       }
       if (status === 'submitted') {
         updateData.submitted_at = new Date().toISOString();
+      }
+
+      // Calculate threshold_met for update
+      // First get the case_id from the existing response
+      const { data: existingResponse, error: fetchError } = await supabaseAdmin
+        .from('survey_responses')
+        .select('case_id')
+        .eq('id', id)
+        .single();
+
+      if (!fetchError && existingResponse?.case_id) {
+        const { data: caseData, error: caseError } = await supabaseAdmin
+          .from('cases')
+          .select('initial_threshold')
+          .eq('id', existingResponse.case_id)
+          .single();
+
+        if (!caseError && caseData) {
+          const threshold = caseData.initial_threshold ?? 50;
+          updateData.threshold_met = score >= threshold;
+          console.log(`📊 Update Threshold check: Score ${score} >= Threshold ${threshold} = ${updateData.threshold_met}`);
+        }
       }
 
       const { data: updatedResponse, error } = await supabaseAdmin
@@ -1310,8 +1348,8 @@ class SurveyController {
 
       // Update survey link participant count if applicable
       if (existingResponse.case_id) {
-        await supabaseAdmin.rpc('decrement_survey_participants' as any, { 
-          survey_id: existingResponse.case_id 
+        await supabaseAdmin.rpc('decrement_survey_participants' as any, {
+          survey_id: existingResponse.case_id
         });
       }
 
@@ -1402,7 +1440,7 @@ class SurveyController {
 
       // Score statistics
       const completedScores = responses?.filter(r => r.status === 'completed' && r.score !== null).map(r => r.score || 0) || [];
-      const averageScore = completedScores.length > 0 ? 
+      const averageScore = completedScores.length > 0 ?
         Math.round(completedScores.reduce((a, b) => (a || 0) + (b || 0), 0) / completedScores.length) : 0;
 
       const maxScore = completedScores.length > 0 ? Math.max(...completedScores) : 0;
@@ -1503,8 +1541,8 @@ class SurveyController {
    * Calculate simple application assessment based on case threshold
    */
   private calculateApplicationAssessment(
-    score: number, 
-    responses: Record<string, any>, 
+    score: number,
+    responses: Record<string, any>,
     params: {
       threshold: number;
       caseTitle: string;
@@ -1519,7 +1557,7 @@ class SurveyController {
     developmentAreas: string[];
   } {
     const { threshold, caseTitle, caseDomain } = params;
-    
+
     console.log('🔍 Basit assessment başlatılıyor:', { score, threshold, caseTitle });
 
     let classification: 'qualified' | 'ramp-ready';
@@ -1572,12 +1610,12 @@ class SurveyController {
       developmentAreas.push('Zaman kısıtları');
     }
 
-    console.log('📊 Basit assessment tamamlandı:', { 
-      classification, 
-      recommendedStatus, 
+    console.log('📊 Basit assessment tamamlandı:', {
+      classification,
+      recommendedStatus,
       thresholdMet: score >= threshold,
       strengthAreas: strengthAreas.length,
-      developmentAreas: developmentAreas.length 
+      developmentAreas: developmentAreas.length
     });
 
     return {
@@ -1599,7 +1637,7 @@ class SurveyController {
     years: string;
   } {
     const experienceResponse = responses['personal-experience-years'] || '';
-    
+
     if (experienceResponse.includes('5-8') || experienceResponse.includes('8+')) {
       return { isExperienced: true, isEntry: false, years: experienceResponse };
     } else if (experienceResponse.includes('0-1') || experienceResponse.includes('Yeni')) {
@@ -1618,7 +1656,7 @@ class SurveyController {
     preferenceText: string;
   } {
     const locationResponse = responses['personal-location-konya'] || '';
-    
+
     if (locationResponse.includes('Evet, Konya')) {
       return { isKonyaBased: true, canRelocate: true, preferenceText: locationResponse };
     } else if (locationResponse.includes('gelebilirim')) {
@@ -1637,7 +1675,7 @@ class SurveyController {
     statusText: string;
   } {
     const workStatusResponse = responses['personal-work-status'] || '';
-    
+
     if (workStatusResponse.includes('Aktif olarak çalışmıyorum') || workStatusResponse.includes('Öğrenciyim')) {
       return { isFullyAvailable: true, isPartiallyAvailable: false, statusText: workStatusResponse };
     } else if (workStatusResponse.includes('Part-time') || workStatusResponse.includes('Freelancer')) {
@@ -1651,8 +1689,8 @@ class SurveyController {
    * Send notification emails after application creation
    */
   private async sendApplicationNotifications(
-    application: any, 
-    assessment: any, 
+    application: any,
+    assessment: any,
     params: {
       caseName: string;
       applicantEmail: string;
@@ -1666,7 +1704,7 @@ class SurveyController {
 
       // Applicant email content
       const applicantEmailContent = this.generateApplicantEmail(assessment, caseName, applicantName);
-      
+
       // Admin email content  
       const adminEmailContent = this.generateAdminEmail(application, assessment, caseName);
 
@@ -1705,8 +1743,8 @@ class SurveyController {
    * Generate email content for applicant
    */
   private generateApplicantEmail(assessment: any, caseName: string, applicantName: string): string {
-    const statusText = assessment.classification === 'qualified' 
-      ? 'Tebrikler! Qualified statüsünde değerlendirildiniz.' 
+    const statusText = assessment.classification === 'qualified'
+      ? 'Tebrikler! Qualified statüsünde değerlendirildiniz.'
       : 'Başlangıç rampası eğitimine uygun bulundunuz.';
 
     return `
@@ -1726,9 +1764,9 @@ ${assessment.strengthAreas?.map((area: string) => `• ${area}`).join('\n') || '
 🎯 Odaklanma Alanlarınız:
 ${assessment.developmentAreas?.map((area: string) => `• ${area}`).join('\n') || 'Belirtilmedi'}
 
-${assessment.classification === 'qualified' 
-  ? 'Doğrudan case ekibine dahil olmanız için gerekli süreçler başlatılacaktır.' 
-  : 'Başlangıç rampası eğitimi için tarafınızla iletişime geçilecektir.'}
+${assessment.classification === 'qualified'
+        ? 'Doğrudan case ekibine dahil olmanız için gerekli süreçler başlatılacaktır.'
+        : 'Başlangıç rampası eğitimi için tarafınızla iletişime geçilecektir.'}
 
 Saygılarımızla,
 Alliance Portal Ekibi
@@ -1741,7 +1779,7 @@ Alliance Portal Ekibi
   private generateAdminEmail(application: any, assessment: any, caseName: string): string {
     const statusIcon = assessment.classification === 'qualified' ? '🏆' : '📈';
     const statusText = assessment.classification === 'qualified' ? 'QUALIFIED' : 'BAŞLANGIÇ RAMPASI';
-    
+
     return `
 ${statusIcon} Yeni Başvuru: ${caseName}
 
@@ -1762,9 +1800,9 @@ ${assessment.evaluationNotes}
 • Anket Yanıt ID: ${application.survey_response_id}
 • Threshold Geçti: ${assessment.thresholdMet ? 'Evet' : 'Hayır'}
 
-${assessment.classification === 'qualified' 
-  ? '✅ Bu aday doğrudan case ekibine alınabilir.'
-  : '📚 Bu aday başlangıç rampası eğitimine dahil edilebilir.'}
+${assessment.classification === 'qualified'
+        ? '✅ Bu aday doğrudan case ekibine alınabilir.'
+        : '📚 Bu aday başlangıç rampası eğitimine dahil edilebilir.'}
 
 Admin panelinden detaylı inceleme yapabilirsiniz.
     `;
@@ -1837,7 +1875,7 @@ Admin panelinden detaylı inceleme yapabilirsiniz.
 
       // Handle dynamic surveys - use customizations if available
       let questions = (surveyLink as any).survey_templates?.questions || [];
-      
+
       const customizations = surveyLink.customizations as any;
       // Check for generated questions (generatedQuestions from createSurveyLink)
       if (customizations?.generatedQuestions && Array.isArray(customizations.generatedQuestions) && customizations.generatedQuestions.length > 0) {
@@ -1979,14 +2017,14 @@ Admin panelinden detaylı inceleme yapabilirsiniz.
             // For application-initial-assessment, only count domain questions (not personal info)
             if (isApplicationAssessment) {
               // Personal info questions typically don't have category or have category 'personal'
-              const isPersonalInfo = response.category === 'personal' || 
-                                   response.category === 'kişisel' ||
-                                   questionId.includes('name') ||
-                                   questionId.includes('email') ||
-                                   questionId.includes('phone') ||
-                                   questionId.includes('location') ||
-                                   questionId.includes('experience') ||
-                                   questionId.includes('kişisel');
+              const isPersonalInfo = response.category === 'personal' ||
+                response.category === 'kişisel' ||
+                questionId.includes('name') ||
+                questionId.includes('email') ||
+                questionId.includes('phone') ||
+                questionId.includes('location') ||
+                questionId.includes('experience') ||
+                questionId.includes('kişisel');
 
               if (!isPersonalInfo) {
                 // Only count domain/assessment questions
@@ -2006,7 +2044,7 @@ Admin panelinden detaylı inceleme yapabilirsiniz.
       }
 
       const score = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
-      
+
       if (isApplicationAssessment) {
         console.log(`📊 Application Assessment Scoring: ${totalScore}/${maxScore} = ${score}% (only domain questions counted)`);
       } else {
@@ -2039,8 +2077,8 @@ Admin panelinden detaylı inceleme yapabilirsiniz.
           participant_name,
           participant_email,
           responses,
-          questions: (surveyLink as any).customizations?.isDynamic && (surveyLink as any).customizations?.dynamicQuestions 
-            ? (surveyLink as any).customizations.dynamicQuestions 
+          questions: (surveyLink as any).customizations?.isDynamic && (surveyLink as any).customizations?.dynamicQuestions
+            ? (surveyLink as any).customizations.dynamicQuestions
             : (surveyLink as any).survey_templates?.questions,
           score,
           status: 'completed',
@@ -2062,14 +2100,14 @@ Admin panelinden detaylı inceleme yapabilirsiniz.
       }
 
       // Update survey link participant count
-      await supabaseAdmin.rpc('increment_survey_link_participants' as any, { 
-        link_id: (surveyLink as any).id 
+      await supabaseAdmin.rpc('increment_survey_link_participants' as any, {
+        link_id: (surveyLink as any).id
       });
 
       // Create application for application-initial-assessment surveys
       if (((surveyLink as any).survey_templates as any)?.type === 'application-initial-assessment') {
         console.log('🎯 Başvuru ve İlk Değerlendirme anketi tespit edildi, başvuru oluşturuluyor...');
-        
+
         // Get case data for threshold check
         const { data: caseData } = await supabaseAdmin
           .from('cases')
@@ -2078,7 +2116,7 @@ Admin panelinden detaylı inceleme yapabilirsiniz.
           .single();
 
         const threshold = (caseData as any)?.initial_threshold || 70;
-        
+
         // Basit 2 seviyeli değerlendirme sistemi
         const assessment = this.calculateApplicationAssessment(score, responses, {
           threshold,
@@ -2119,7 +2157,7 @@ Admin panelinden detaylı inceleme yapabilirsiniz.
         } else {
           console.log('✅ Application created successfully:', application.id);
           console.log('📊 Assessment result:', assessment);
-          
+
           // Send notification emails
           await this.sendApplicationNotifications(application, assessment, {
             caseName: (caseData as any)?.title || 'Case',

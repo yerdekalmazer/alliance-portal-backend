@@ -40,7 +40,7 @@ class TechnicalAssessmentController {
       // Her job type için sorular oluştur
       for (const jobType of job_types) {
         console.log(`📝 ${jobType} için sorular hazırlanıyor...`);
-        
+
         // İlk teknik değerlendirme soruları
         console.log(`🔍 ${jobType} için basic sorular aranıyor...`);
         // Önce job_type'a özel soruları çek
@@ -60,7 +60,7 @@ class TechnicalAssessmentController {
         const { data: generalQuestions } = await supabaseAdmin
           .from('question_bank_questions')
           .select('*')
-          .or('job_type.eq.All,job_type.is.null')
+          .or('job_type.eq.All,job_type.is.null,job_type.eq.Genel')
           .in('category', [
             'first-stage-technical',
             'initial-technical',
@@ -70,16 +70,15 @@ class TechnicalAssessmentController {
           .order('difficulty', { ascending: true });
 
         // Birleştir ve job type başına sınırlı sayıda temel soru seç (varsayılan 2)
-        const basicQuestions = [...(jobSpecificQuestions || []), ...(generalQuestions || [])]
-          .filter(q => q.category === 'first-stage-technical')
+        const basicPool = [...(jobSpecificQuestions || []), ...(generalQuestions || [])];
+        // Benzersiz soruları filtrele
+        const basicUnique = Array.from(new Map(basicPool.map(item => [item.id, item])).values());
+
+        const basicQuestions = basicUnique
+          .filter(q => ['first-stage-technical', 'initial-technical', 'basic-technical', 'ilk-teknik'].includes(q.category))
           .slice(0, 2);
-        const basicError = null;
-        
-        if (basicError) {
-          console.error(`❌ Basic questions error for ${jobType}:`, basicError);
-        } else {
-          console.log(`✅ ${jobType} basic questions found:`, basicQuestions?.length || 0);
-        }
+
+        console.log(`✅ ${jobType} basic questions selected: ${basicQuestions.length}`);
 
         // İleri teknik sorular (sadece ilk aşamada başarılı olanlar için)
         const { data: jobSpecificAdvanced } = await supabaseAdmin
@@ -96,7 +95,7 @@ class TechnicalAssessmentController {
         const { data: generalAdvanced } = await supabaseAdmin
           .from('question_bank_questions')
           .select('*')
-          .or('job_type.eq.All,job_type.is.null')
+          .or('job_type.eq.All,job_type.is.null,job_type.eq.Genel')
           .in('category', [
             'advanced-technical',
             'advanced',
@@ -105,9 +104,14 @@ class TechnicalAssessmentController {
           .order('difficulty', { ascending: true });
 
         // İleri teknik soruları birleştir ve sınırlı sayıda seç (varsayılan 3)
-        const advancedQuestions = [...(jobSpecificAdvanced || []), ...(generalAdvanced || [])]
-          .filter(q => q.category === 'advanced-technical')
+        const advancedPool = [...(jobSpecificAdvanced || []), ...(generalAdvanced || [])];
+        const advancedUnique = Array.from(new Map(advancedPool.map(item => [item.id, item])).values());
+
+        const advancedQuestions = advancedUnique
+          .filter(q => ['advanced-technical', 'advanced', 'ileri-teknik'].includes(q.category))
           .slice(0, 3);
+
+        console.log(`✅ ${jobType} advanced questions selected: ${advancedQuestions.length}`);
 
         // Liderlik ve karakter soruları globalden kullan
         const leadershipQuestions = globalLeadershipQuestions || [];
@@ -129,15 +133,19 @@ class TechnicalAssessmentController {
           jobTypeQuestions.leadershipQuestions.length === 0 &&
           jobTypeQuestions.characterQuestions.length === 0
         ) {
+          console.warn(`⚠️ ${jobType} için hiç soru bulunamadı, fallback deneniyor...`);
           const { data: fallbackByJobType } = await supabaseAdmin
             .from('question_bank_questions')
             .select('*')
-            .in('job_type', [jobType, 'All', null]);
+            .in('job_type', [jobType, 'All', null, 'Genel']);
+
           if (fallbackByJobType && fallbackByJobType.length > 0) {
-            jobTypeQuestions.basicQuestions = fallbackByJobType.filter(q => q.category === 'first-stage-technical');
-            jobTypeQuestions.advancedQuestions = fallbackByJobType.filter(q => q.category === 'advanced-technical');
-            jobTypeQuestions.leadershipQuestions = fallbackByJobType.filter(q => q.category === 'leadership-scenario' || q.category === 'leadership-scenarios');
-            jobTypeQuestions.characterQuestions = fallbackByJobType.filter(q => q.category === 'character-analysis');
+            console.log(`✅ Fallback ile ${fallbackByJobType.length} soru bulundu.`);
+            jobTypeQuestions.basicQuestions = fallbackByJobType.filter(q => q.category === 'first-stage-technical').slice(0, 2);
+            jobTypeQuestions.advancedQuestions = fallbackByJobType.filter(q => q.category === 'advanced-technical').slice(0, 3);
+            if (jobTypeQuestions.leadershipQuestions.length === 0) {
+              jobTypeQuestions.leadershipQuestions = fallbackByJobType.filter(q => q.category === 'leadership-scenario' || q.category === 'leadership-scenarios').slice(0, 5);
+            }
           }
         }
 
@@ -161,8 +169,8 @@ class TechnicalAssessmentController {
 
       console.log('✅ Teknik değerlendirme anketi hazırlandı:', {
         jobTypes: job_types.length,
-        totalQuestions: allQuestions.reduce((sum, group) => 
-          sum + group.basicQuestions.length + group.advancedQuestions.length + 
+        totalQuestions: allQuestions.reduce((sum, group) =>
+          sum + group.basicQuestions.length + group.advancedQuestions.length +
           group.leadershipQuestions.length + group.characterQuestions.length, 0
         ),
         jobTypeScores
@@ -197,7 +205,7 @@ class TechnicalAssessmentController {
         } as ApiResponse);
       }
 
-      console.log('🔍 Teknik değerlendirme analizi başlatılıyor:', { 
+      console.log('🔍 Teknik değerlendirme analizi başlatılıyor:', {
         job_types: job_types.length,
         hasScores: Object.keys(scores).length > 0
       });
@@ -230,14 +238,14 @@ class TechnicalAssessmentController {
 
         // Frontend'den gelen scores'ları kullan veya hesapla
         let jobTypeAnalysis;
-        
+
         if (Object.keys(scores).length > 0) {
           // Frontend'den aşamalı puanlar geldi, onları kullan
           const basicKey = `${jobType}_basic`;
           const advancedKey = `${jobType}_advanced`;
           const leadershipKey = `${jobType}_leadership`;
           const characterKey = `${jobType}_character`;
-          
+
           jobTypeAnalysis = {
             basicScore: scores[basicKey]?.score || 0,
             maxBasicScore: scores[basicKey]?.maxScore || 0,
@@ -247,19 +255,19 @@ class TechnicalAssessmentController {
             advancedPercentage: scores[advancedKey]?.percentage || 0,
             hasAdvancedAccess: !!scores[advancedKey]?.score
           };
-          
+
           console.log(`📊 ${jobType} aşamalı puanları:`, {
             basic: `${jobTypeAnalysis.basicScore}/${jobTypeAnalysis.maxBasicScore} (${jobTypeAnalysis.basicPercentage}%)`,
             advanced: `${jobTypeAnalysis.advancedScore}/${jobTypeAnalysis.maxAdvancedScore} (${jobTypeAnalysis.advancedPercentage}%)`,
             hasAdvancedAccess: jobTypeAnalysis.hasAdvancedAccess
           });
-          
+
         } else {
           // Eski sistem - tüm skorları hesapla
           jobTypeAnalysis = this.calculateJobTypeScore(responses, jobTypeQuestions || [], jobType);
           // hasAdvancedAccess zaten calculateJobTypeScore metodunda true olarak set ediliyor
         }
-        
+
         const leadershipAnalysis = this.analyzeLeadership(responses, leadershipQuestions || []);
         const characterAnalysis = this.analyzeCharacter(responses, characterQuestions || []);
 
@@ -330,17 +338,17 @@ class TechnicalAssessmentController {
       }
     });
 
-        // İleri teknik skorları (herkes için)
-        advancedQuestions.forEach(question => {
-          const response = responses[question.id];
-          if (response && response.answer !== undefined) {
-            const isCorrect = this.checkAnswer(question, response.answer);
-            if (isCorrect) {
-              advancedScore += question.points || 0;
-            }
-            maxAdvancedScore += question.points || 0;
-          }
-        });
+    // İleri teknik skorları (herkes için)
+    advancedQuestions.forEach(question => {
+      const response = responses[question.id];
+      if (response && response.answer !== undefined) {
+        const isCorrect = this.checkAnswer(question, response.answer);
+        if (isCorrect) {
+          advancedScore += question.points || 0;
+        }
+        maxAdvancedScore += question.points || 0;
+      }
+    });
 
     return {
       basicScore,
@@ -397,7 +405,7 @@ class TechnicalAssessmentController {
   // Karakter analizi
   private analyzeCharacter(responses: Record<string, any>, characterQuestions: any[]) {
     const characterAnswers: string[] = [];
-    
+
     characterQuestions.forEach(question => {
       const response = responses[question.id];
       if (response && response.answer !== undefined) {
@@ -438,7 +446,7 @@ class TechnicalAssessmentController {
     // Basit kişilik analizi - gerçek uygulamada daha karmaşık algoritma kullanılabilir
     const riskTaker = answers.filter(a => a.includes('Hesaplanmış risk') || a.includes('Yüksek risk')).length;
     const cautious = answers.filter(a => a.includes('Düşük risk') || a.includes('Risk almam')).length;
-    
+
     if (riskTaker > cautious) return 'Risk Alıcı';
     if (cautious > riskTaker) return 'Temkinli';
     return 'Dengeli';
@@ -448,7 +456,7 @@ class TechnicalAssessmentController {
   private determineWorkStyle(answers: string[]): string {
     const collaborative = answers.filter(a => a.includes('Takım') || a.includes('Demokratik')).length;
     const independent = answers.filter(a => a.includes('serbest') || a.includes('Laissez-faire')).length;
-    
+
     if (collaborative > independent) return 'İşbirlikçi';
     if (independent > collaborative) return 'Bağımsız';
     return 'Esnek';
@@ -458,7 +466,7 @@ class TechnicalAssessmentController {
   private determineCommunicationStyle(answers: string[]): string {
     const direct = answers.filter(a => a.includes('Düzenli') || a.includes('Hızlı')).length;
     const indirect = answers.filter(a => a.includes('Yavaş') || a.includes('temkinli')).length;
-    
+
     if (direct > indirect) return 'Direkt';
     if (indirect > direct) return 'Dolaylı';
     return 'Dengeli';
@@ -470,7 +478,7 @@ class TechnicalAssessmentController {
     const avoidance = answers.filter(a => a.includes('Kaçınma')).length;
     const accommodation = answers.filter(a => a.includes('Uyum')).length;
     const competition = answers.filter(a => a.includes('Rekabet')).length;
-    
+
     const max = Math.max(problemSolving, avoidance, accommodation, competition);
     if (max === problemSolving) return 'Problem Çözücü';
     if (max === avoidance) return 'Kaçınmacı';
@@ -500,7 +508,7 @@ class TechnicalAssessmentController {
   // Roller öner
   private recommendRoles(analysisResults: any[]): string[] {
     const recommendations: string[] = [];
-    
+
     analysisResults.forEach(result => {
       if (result.overallPercentage >= 80) {
         recommendations.push(`${result.jobType} - Senior Level`);
@@ -520,7 +528,7 @@ class TechnicalAssessmentController {
   private analyzeTeamCompatibility(analysisResults: any[]): any {
     const leadershipStyles = analysisResults.map(r => r.leadershipAnalysis.style);
     const personalities = analysisResults.map(r => r.characterAnalysis.personality);
-    
+
     return {
       leadershipDiversity: [...new Set(leadershipStyles)].length,
       personalityBalance: this.calculatePersonalityBalance(personalities),
@@ -545,17 +553,17 @@ class TechnicalAssessmentController {
   // Takım önerileri
   private getTeamRecommendations(analysisResults: any[]): string[] {
     const recommendations = [];
-    
+
     const hasStrongLeader = analysisResults.some(r => r.leadershipAnalysis.percentage >= 80);
     if (!hasStrongLeader) {
       recommendations.push('Güçlü bir takım lideri atanması önerilir');
     }
-    
+
     const hasTechnicalExpert = analysisResults.some(r => r.overallPercentage >= 80);
     if (!hasTechnicalExpert) {
       recommendations.push('Teknik uzman desteği gerekebilir');
     }
-    
+
     return recommendations;
   }
 }
