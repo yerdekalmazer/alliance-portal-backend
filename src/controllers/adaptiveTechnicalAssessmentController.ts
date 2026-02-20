@@ -93,18 +93,11 @@ class AdaptiveTechnicalAssessmentController {
 
       const allJobTypeGroups: AdaptiveJobTypeGroup[] = [];
 
-      // Leadership sorularını sadece bir kez çek (sadece liderlik gerektiren roller için)
-      // Önce hangi job type'ların liderlik gerektirdiğini kontrol et
-      const needsLeadership = job_types.some((jt: string) => this.isLeadershipEligible(jt));
+      // Leadership sorularını her zaman çek - 5 soru
       let sharedLeadershipQuestions: AdaptiveQuestion[] = [];
-      
-      if (needsLeadership) {
-        console.log(`🔍 Leadership sorular aranıyor (liderlik gerektiren roller var)...`);
-        sharedLeadershipQuestions = await this.getPhaseQuestions('All', 'leadership-scenarios', 5);
-        console.log(`✅ Leadership sorular bulundu:`, sharedLeadershipQuestions?.length || 0);
-      } else {
-        console.log(`ℹ️ Hiçbir rol liderlik soruları gerektirmiyor (QA, UI/UX gibi roller)`);
-      }
+      console.log(`🔍 Leadership soruları (5 adet) getiriliyor...`);
+      sharedLeadershipQuestions = await this.getPhaseQuestions('All', 'leadership-scenarios', 5);
+      console.log(`✅ Leadership sorular bulundu:`, sharedLeadershipQuestions?.length || 0);
 
       // Her job type için aşamalı sorular oluştur (SADECE İLK AŞAMA VE İLERİ)
       for (const jobType of job_types) {
@@ -115,9 +108,9 @@ class AdaptiveTechnicalAssessmentController {
         const basicQuestions = await this.getPhaseQuestions(jobType, 'first-stage-technical', 2);
         console.log(`✅ ${jobType} basic sorular bulundu:`, basicQuestions?.length || 0);
         
-        // Advanced Technical Questions - İLERİ
+        // Advanced Technical Questions - İLERİ (2 soru, 1/2 doğruysa açılır)
         console.log(`🔍 ${jobType} için advanced sorular aranıyor (advanced-technical)...`);
-        const advancedQuestions = await this.getPhaseQuestions(jobType, 'advanced-technical', 3);
+        const advancedQuestions = await this.getPhaseQuestions(jobType, 'advanced-technical', 2);
         console.log(`✅ ${jobType} advanced sorular bulundu:`, advancedQuestions?.length || 0);
 
         const jobTypeGroup: AdaptiveJobTypeGroup = {
@@ -209,17 +202,47 @@ class AdaptiveTechnicalAssessmentController {
       }
 
       // Database field'larını AdaptiveQuestion interface'ine map et
-      const mappedQuestions: AdaptiveQuestion[] = allQuestions.slice(0, limit).map(q => ({
-        id: q.id,
-        type: q.type,
-        question: q.question,
-        options: Array.isArray(q.options) ? q.options : (typeof q.options === 'string' ? JSON.parse(q.options) : []),
-        correct: Array.isArray(q.correct) ? q.correct : (typeof q.correct === 'string' ? JSON.parse(q.correct) : []),
-        points: q.points,
-        difficulty: q.difficulty,
-        category: q.category,
-        jobType: q.job_type || jobType // job_type -> jobType mapping
-      }));
+      const mappedQuestions: AdaptiveQuestion[] = allQuestions.slice(0, limit).map((q: any) => {
+        const base = {
+          id: q.id,
+          type: q.type,
+          question: q.question,
+          options: Array.isArray(q.options) ? q.options : (typeof q.options === 'string' ? JSON.parse(q.options || '[]') : []),
+          correct: Array.isArray(q.correct) ? q.correct : (typeof q.correct === 'string' ? JSON.parse(q.correct || '[]') : []),
+          points: q.points ?? 25,
+          difficulty: q.difficulty,
+          category: q.category,
+          jobType: q.job_type || jobType
+        };
+        if (category === 'leadership-scenarios' && q.leadership_scoring) {
+          const ls = typeof q.leadership_scoring === 'string' ? JSON.parse(q.leadership_scoring) : q.leadership_scoring;
+          const mapping: Record<number, string> = {};
+          const scoring: Record<number, { points: number; criteria: Record<string, number> }> = {};
+          if (ls && typeof ls === 'object') {
+            Object.entries(ls).forEach(([k, v]: [string, any]) => {
+              const i = parseInt(k, 10);
+              if (!isNaN(i) && v?.points != null) {
+                mapping[i] = v.leadershipType || `type-${k}`;
+                scoring[i] = { points: v.points, criteria: v.criteria || {} };
+              }
+            });
+          }
+          if (Object.keys(scoring).length > 0) {
+            return { ...base, leadershipMapping: mapping, leadershipScoring: scoring } as any;
+          }
+        }
+        if (category === 'leadership-scenarios') {
+          const opts = Array.isArray(base.options) ? base.options : [];
+          const defMapping: Record<number, string> = {};
+          const defScoring: Record<number, { points: number; criteria: Record<string, number> }> = {};
+          opts.forEach((_: string, i: number) => {
+            defMapping[i] = `liderlik-tipi-${i}`;
+            defScoring[i] = { points: Math.round((base.points || 25) * 0.85), criteria: { 'Liderlik': 4 } };
+          });
+          return { ...base, leadershipMapping: defMapping, leadershipScoring: defScoring } as any;
+        }
+        return base as AdaptiveQuestion;
+      });
 
       console.log(`✅ Final mapped questions for ${jobType} (${category}):`, mappedQuestions.length);
       

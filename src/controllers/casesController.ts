@@ -848,30 +848,35 @@ class CasesController {
       }
 
       // Convert adaptive responses to survey response format for consistency
-      const normalizedAdaptiveResponses = (adaptiveResponses || []).map(adaptive => ({
-        id: adaptive.id,
-        survey_template_id: null,
-        case_id: adaptive.case_id,
-        participant_id: null,
-        participant_name: adaptive.participant_name,
-        participant_email: adaptive.participant_email,
-        team_member_id: null,
-        responses: adaptive.raw_responses || {},
-        questions: [], // Adaptive questions are embedded in analysis
-        score: adaptive.overall_score || 0,
-        status: adaptive.status,
-        technical_details: adaptive.analysis_results,
-        category_scores: adaptive.phase_scores,
-        completed_at: adaptive.completed_at,
-        submitted_at: adaptive.submitted_at,
-        created_at: adaptive.created_at,
-        // Mark as adaptive assessment for frontend identification
-        assessment_type: 'adaptive-technical-assessment',
-        job_types: adaptive.job_types,
-        overall_percentage: adaptive.overall_percentage,
-        strongest_areas: adaptive.strongest_areas,
-        improvement_areas: adaptive.improvement_areas
-      }));
+      const normalizedAdaptiveResponses = (adaptiveResponses || []).map(adaptive => {
+        const analysis = adaptive.analysis_results || {};
+        return {
+          id: adaptive.id,
+          survey_template_id: null,
+          case_id: adaptive.case_id,
+          participant_id: null,
+          participant_name: adaptive.participant_name,
+          participant_email: adaptive.participant_email,
+          team_member_id: null,
+          responses: adaptive.raw_responses || {},
+          questions: [], // Adaptive questions are embedded in analysis
+          score: adaptive.overall_score || 0,
+          status: adaptive.status,
+          technical_details: analysis,
+          category_scores: adaptive.phase_scores,
+          completed_at: adaptive.completed_at,
+          submitted_at: adaptive.submitted_at,
+          created_at: adaptive.created_at,
+          assessment_type: 'adaptive-technical-assessment',
+          job_types: adaptive.job_types,
+          overall_percentage: adaptive.overall_percentage,
+          strongest_areas: adaptive.strongest_areas,
+          improvement_areas: adaptive.improvement_areas,
+          // Frontend'in leadership_type ve analysis_results erişimi için
+          analysis_results: analysis,
+          leadership_type: (analysis as Record<string, unknown>)?.leadershipType ?? null
+        };
+      });
 
       // Combine all results
       const allResults = [

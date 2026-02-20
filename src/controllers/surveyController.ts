@@ -3,6 +3,20 @@ import { supabase, supabaseAdmin } from '../config/database';
 import { ApiResponse, SurveyTemplate, SurveyResponse, SurveyLink } from '../models/types';
 import { technicalAssessmentController } from './technicalAssessmentController';
 import { calculateAssessmentScore } from '../utils/surveyGeneration';
+import * as fs from 'fs';
+import * as path from 'path';
+
+// Helper for file logging
+const logToFile = (message: string, data?: any) => {
+  try {
+    const logPath = path.join(process.cwd(), 'backend-debug.log');
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] ${message}\n${data ? JSON.stringify(data, null, 2) + '\n' : ''}\n`;
+    fs.appendFileSync(logPath, logEntry);
+  } catch (e) {
+    console.error('Failed to write to log file:', e);
+  }
+};
 
 class SurveyController {
   constructor() {
@@ -457,7 +471,8 @@ class SurveyController {
         target_audience,
         customizations,
         expires_at,
-        url // Frontend'den gelen URL'yi de al ama ignore et
+        collect_personal_info,
+        url
       } = req.body;
 
       if (!template_id || !title || !target_audience) {
@@ -528,95 +543,104 @@ class SurveyController {
       let finalCustomizations = customizations;
 
       if (templateData?.type === 'adaptive-technical-assessment') {
-        // Import adaptive controller instance to generate questions
-        const { adaptiveTechnicalAssessmentController } = require('./adaptiveTechnicalAssessmentController');
-
-        try {
-          // Generate questions once for this survey link
-          const mockReq = {
-            body: {
-              case_id,
-              job_types: customizations?.job_types || ['Frontend Developer']
-            }
+        // If frontend already sent pre-generated questions, use them directly
+        if (customizations?.preGeneratedQuestions && customizations.preGeneratedQuestions.length > 0) {
+          console.log('✅ Using frontend pre-generated adaptive questions:', {
+            jobTypeGroups: customizations.preGeneratedQuestions.length,
+            leadershipQuestions: customizations.leadershipQuestions?.length || 0
+          });
+          finalCustomizations = {
+            ...customizations,
+            isPreGenerated: true
           };
+        } else {
+          // Generate questions on backend if not provided
+          const { adaptiveTechnicalAssessmentController } = require('./adaptiveTechnicalAssessmentController');
 
-          // Create mock response object to capture data
-          let generatedData: any;
-          const mockRes = {
-            json: (data: any) => {
-              generatedData = data;
-            }
-          };
-
-          // Generate questions
-          await adaptiveTechnicalAssessmentController.generateAdaptiveAssessment(mockReq, mockRes, () => { });
-
-          if (generatedData?.success && generatedData?.data) {
-            // Store generated questions in customizations
-            finalCustomizations = {
-              ...customizations,
-              preGeneratedQuestions: generatedData.data.jobTypeGroups,
-              leadershipQuestions: generatedData.data.leadershipQuestions, // Liderlik sorularını da kaydet
-              assessmentConfig: generatedData.data.config,
-              isPreGenerated: true
+          try {
+            const mockReq = {
+              body: {
+                case_id,
+                job_types: customizations?.job_types || ['Frontend Developer']
+              }
             };
+
+            let generatedData: any;
+            const mockRes = {
+              json: (data: any) => {
+                generatedData = data;
+              }
+            };
+
+            await adaptiveTechnicalAssessmentController.generateAdaptiveAssessment(mockReq, mockRes, () => { });
+
+            if (generatedData?.success && generatedData?.data) {
+              finalCustomizations = {
+                ...customizations,
+                preGeneratedQuestions: generatedData.data.jobTypeGroups,
+                leadershipQuestions: generatedData.data.leadershipQuestions,
+                assessmentConfig: generatedData.data.config,
+                isPreGenerated: true
+              };
+            }
+          } catch (error) {
+            console.error('❌ Error pre-generating questions:', error);
           }
-        } catch (error) {
-          console.error('❌ Error pre-generating questions:', error);
         }
       } else if (templateData?.is_dynamic && case_id) {
-        // Handle other dynamic templates (initial-assessment, application-initial-assessment, technical-assessment)
-        console.log('🔀 Dynamic template detected, generating questions...');
-        console.log('📊 Template type:', templateData.type);
-        console.log('📊 Template is_dynamic:', templateData.is_dynamic);
+        // If frontend already sent generated questions, use them directly
+        if (customizations?.generatedQuestions && customizations.generatedQuestions.length > 0) {
+          console.log('✅ Using frontend pre-generated questions:', customizations.generatedQuestions.length);
+          finalCustomizations = {
+            ...customizations,
+            isDynamicGenerated: true,
+            caseId: case_id,
+            generatedAt: new Date().toISOString()
+          };
+        } else {
+          console.log('🔀 Dynamic template detected, generating questions on backend...');
+          try {
+            const { generateDynamicSurveyQuestions } = require('../utils/surveyGeneration');
 
-        try {
-          // Import survey generation utility
-          const { generateDynamicSurveyQuestions } = require('../utils/surveyGeneration');
+            const { data: caseData, error: caseError } = await supabaseAdmin
+              .from('cases')
+              .select('*')
+              .eq('id', case_id)
+              .single();
 
-          // Fetch case data to generate questions
-          const { data: caseData, error: caseError } = await supabaseAdmin
-            .from('cases')
-            .select('*')
-            .eq('id', case_id)
-            .single();
+            if (caseError || !caseData) {
+              console.error('❌ Could not fetch case data for dynamic question generation:', caseError);
+            } else {
+              const caseScenario = {
+                id: caseData.id,
+                title: (caseData as any).title || '',
+                jobTypes: (caseData as any).job_types || [],
+                specializations: (caseData as any).specializations || [],
+                domain: (caseData as any).domain || ''
+              };
 
-          if (caseError || !caseData) {
-            console.error('❌ Could not fetch case data for dynamic question generation:', caseError);
-          } else {
-            console.log('✅ Case data fetched for question generation');
-            console.log('📊 Case job_types:', (caseData as any).job_types);
-            console.log('📊 Case domain:', (caseData as any).domain);
+              const generatedQuestions = generateDynamicSurveyQuestions(templateData, caseScenario);
+              console.log(`✅ Generated ${generatedQuestions.length} dynamic questions`);
 
-            // Convert database format to CaseScenario format
-            const caseScenario = {
-              id: caseData.id,
-              title: (caseData as any).title || '',
-              jobTypes: (caseData as any).job_types || [],
-              specializations: (caseData as any).specializations || [],
-              domain: (caseData as any).domain || ''
-            };
-
-            // Generate dynamic questions
-            const generatedQuestions = generateDynamicSurveyQuestions(templateData, caseScenario);
-            console.log(`✅ Generated ${generatedQuestions.length} dynamic questions`);
-
-            // Store generated questions in customizations
-            finalCustomizations = {
-              ...customizations,
-              generatedQuestions: generatedQuestions,
-              isDynamicGenerated: true,
-              caseId: case_id,
-              generatedAt: new Date().toISOString()
-            };
-
-            console.log('✅ Dynamic questions stored in customizations');
+              finalCustomizations = {
+                ...customizations,
+                generatedQuestions: generatedQuestions,
+                isDynamicGenerated: true,
+                caseId: case_id,
+                generatedAt: new Date().toISOString()
+              };
+            }
+          } catch (error) {
+            console.error('❌ Error generating dynamic questions:', error);
           }
-        } catch (error) {
-          console.error('❌ Error generating dynamic questions:', error);
-          console.error('Error details:', error instanceof Error ? error.message : String(error));
         }
       }
+
+      // Merge collectPersonalInfo into customizations
+      const mergedCustomizations = {
+        ...finalCustomizations,
+        collectPersonalInfo: collect_personal_info !== undefined ? collect_personal_info : true
+      };
 
       // Create survey link
       const { data: surveyLink, error } = await supabaseAdmin
@@ -630,7 +654,7 @@ class SurveyController {
           max_participants,
           current_participants: 0,
           target_audience,
-          customizations: finalCustomizations,
+          customizations: mergedCustomizations,
           expires_at: expires_at ? new Date(expires_at).toISOString() : null,
           is_active: true
         })
@@ -984,6 +1008,13 @@ class SurveyController {
 
   async submitSurveyResponse(req: Request, res: Response, next: NextFunction) {
     try {
+      logToFile('📨 Survey response submission started', {
+        body: req.body,
+        headers: {
+          'content-type': req.headers['content-type']
+        }
+      });
+
       console.log('📨 Survey response submission started:', {
         body: req.body,
         headers: {
@@ -1004,6 +1035,14 @@ class SurveyController {
         category_scores
       } = req.body;
 
+      logToFile('🔍 Extracted data', {
+        survey_template_id,
+        case_id,
+        participant_name,
+        participant_email,
+        responseCount: responses ? Object.keys(responses).length : 0
+      });
+
       console.log('🔍 Survey submission data extracted:', {
         survey_template_id,
         case_id,
@@ -1022,6 +1061,7 @@ class SurveyController {
       }
 
       if (!survey_template_id || !participant_name || !participant_email || !responses) {
+        logToFile('❌ Missing required fields');
         console.error('❌ Missing required fields:', {
           survey_template_id: !!survey_template_id,
           participant_name: !!participant_name,
@@ -1036,11 +1076,73 @@ class SurveyController {
       }
 
       if (!supabaseAdmin) {
+        logToFile('❌ Service role key missing');
         return res.status(500).json({
           success: false,
           error: 'Service role key not configured',
           code: 'SERVICE_ROLE_MISSING'
         } as ApiResponse);
+      }
+
+      // HANDLE TEMPLATE RESOLUTION (UUID vs SLUG)
+      // If survey_template_id is not a UUID, assume it's a type (slug) and try to resolve/create it
+      let resolvedTemplateId = survey_template_id;
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(survey_template_id);
+
+      if (!isUuid) {
+        logToFile(`🔄 Template ID '${survey_template_id}' is not a UUID. Attempting to resolve by type...`);
+        console.log(`🔄 Template ID '${survey_template_id}' is not a UUID. Attempting to resolve by type...`);
+
+        // 1. Try to find existing template by type
+        const { data: existingTemplate, error: findError } = await supabaseAdmin
+          .from('survey_templates')
+          .select('id')
+          .eq('type', survey_template_id)
+          .limit(1)
+          .single();
+
+        if (existingTemplate && !findError) {
+          logToFile(`✅ Found existing template: ${existingTemplate.id}`);
+          console.log(`✅ Found existing template for type '${survey_template_id}': ${existingTemplate.id}`);
+          resolvedTemplateId = existingTemplate.id;
+        } else {
+          logToFile(`⚠️ Template not found. Creating new one...`);
+          console.log(`⚠️ Template for type '${survey_template_id}' not found. Creating new template automatically...`);
+
+          // 2. Create new template
+          // Use provided questions if available, otherwise empty array
+          const templateQuestions = questions || [];
+          const templateTitle = survey_template_id.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+          const { data: newTemplate, error: createError } = await supabaseAdmin
+            .from('survey_templates')
+            .insert({
+              type: survey_template_id,
+              category: 'auto-generated',
+              title: templateTitle,
+              description: 'Automatically generated template from submission',
+              target_audience: 'all',
+              is_active: true,
+              is_dynamic: false,
+              questions: templateQuestions
+            })
+            .select('id')
+            .single();
+
+          if (createError || !newTemplate) {
+            logToFile('❌ Failed to create template', createError);
+            console.error('❌ Failed to create auto-generated template:', createError);
+            return res.status(500).json({
+              success: false,
+              error: 'Failed to create missing survey template',
+              details: createError
+            } as ApiResponse);
+          }
+
+          logToFile(`✅ Created new template: ${newTemplate.id}`);
+          console.log(`✅ Created new template for type '${survey_template_id}': ${newTemplate.id}`);
+          resolvedTemplateId = newTemplate.id;
+        }
       }
 
       // IMPROVED: Calculate score using the same function as frontend
@@ -1098,7 +1200,7 @@ class SurveyController {
 
       // Prepare insert data with improved scoring
       const insertData = {
-        survey_template_id,
+        survey_template_id: resolvedTemplateId,
         case_id,
         participant_id: req.user?.id, // From auth middleware if available
         participant_name,
@@ -1135,6 +1237,7 @@ class SurveyController {
         }
       }
 
+      logToFile('💾 Inserting survey response', insertData);
       console.log('💾 Inserting survey response to database:', {
         survey_template_id: insertData.survey_template_id,
         case_id: insertData.case_id,
@@ -1154,6 +1257,7 @@ class SurveyController {
         .single();
 
       if (error) {
+        logToFile('❌ Database insertion failed', error);
         console.error('❌ Database insertion failed:', {
           error: error.message,
           code: error.code,
@@ -1173,6 +1277,7 @@ class SurveyController {
         } as ApiResponse);
       }
 
+      logToFile('✅ Survey response inserted successfully', surveyResponse.id);
       console.log('✅ Survey response inserted successfully:', {
         id: surveyResponse.id,
         score: surveyResponse.score,
@@ -1192,7 +1297,9 @@ class SurveyController {
         data: surveyResponse,
         message: 'Survey response submitted successfully'
       } as ApiResponse<any>);
-    } catch (error) {
+    } catch (error: any) {
+      logToFile('❌ Unexpected exception', error);
+      console.error('❌ Unexpected exception:', error);
       next(error);
     }
   }
@@ -1893,6 +2000,7 @@ Admin panelinden detaylı inceleme yapabilirsiniz.
       // Remove sensitive data before sending to public
       const publicSurveyData = {
         id: (surveyLink as any).id,
+        url: (surveyLink as any).url,
         title: surveyLink.title,
         description: surveyLink.description,
         target_audience: (surveyLink as any).target_audience,
@@ -1998,11 +2106,25 @@ Admin panelinden detaylı inceleme yapabilirsiniz.
         } as ApiResponse);
       }
 
-      // Calculate score from responses - Special handling for application-initial-assessment
+      // Template tipini al
+      const { data: templateTypeData } = await supabaseAdmin
+        .from('survey_templates')
+        .select('type')
+        .eq('id', (surveyLink as any).template_id!)
+        .single();
+
+      const templateType = templateTypeData?.type;
+
+      // AŞAMALI TEKNİK DEĞERLENDİRME: adaptive_assessment_responses tablosuna kaydet (survey_responses değil)
+      if (templateType === 'adaptive-technical-assessment') {
+        console.log('🧠 Adaptive Technical Assessment detected - saving to adaptive_assessment_responses');
+        return await this.submitAdaptiveFromPublicLink(req, res, next, surveyLink);
+      }
+
+      // Calculate score from responses (regular surveys)
       let totalScore = 0;
       let maxScore = 0;
 
-      // Check if this is an application-initial-assessment survey
       const { data: templateData } = await supabaseAdmin
         .from('survey_templates')
         .select('type')
@@ -2011,45 +2133,29 @@ Admin panelinden detaylı inceleme yapabilirsiniz.
 
       const isApplicationAssessment = templateData?.type === 'application-initial-assessment';
 
+      // Handle both object format { qId: { points, maxPoints } } and array format
       if (responses && typeof responses === 'object') {
-        Object.entries(responses).forEach(([questionId, response]: [string, any]) => {
-          if (response.points) {
-            // For application-initial-assessment, only count domain questions (not personal info)
-            if (isApplicationAssessment) {
-              // Personal info questions typically don't have category or have category 'personal'
-              const isPersonalInfo = response.category === 'personal' ||
-                response.category === 'kişisel' ||
-                questionId.includes('name') ||
-                questionId.includes('email') ||
-                questionId.includes('phone') ||
-                questionId.includes('location') ||
-                questionId.includes('experience') ||
-                questionId.includes('kişisel');
+        const entries: Array<[string, any]> = Array.isArray(responses)
+          ? responses.map((r: any) => [r.questionId, r] as [string, any])
+          : Object.entries(responses);
 
-              if (!isPersonalInfo) {
-                // Only count domain/assessment questions
-                totalScore += response.points;
-                maxScore += response.maxPoints || response.points;
-                console.log(`📊 Domain question scored: ${questionId} = ${response.points}/${response.maxPoints || response.points}`);
-              } else {
-                console.log(`ℹ️ Personal info question skipped: ${questionId}`);
-              }
-            } else {
-              // For other surveys, count all questions
-              totalScore += response.points;
-              maxScore += response.maxPoints || response.points;
-            }
+        entries.forEach(([questionId, response]) => {
+          if (response && typeof response.points === 'number') {
+            totalScore += response.points;
+            maxScore += response.maxPoints || response.points;
+            console.log(`📊 Question scored: ${questionId} = ${response.points}/${response.maxPoints || response.points}`);
           }
         });
       }
 
-      const score = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
-
-      if (isApplicationAssessment) {
-        console.log(`📊 Application Assessment Scoring: ${totalScore}/${maxScore} = ${score}% (only domain questions counted)`);
-      } else {
-        console.log(`📊 Regular Survey Scoring: ${totalScore}/${maxScore} = ${score}%`);
+      // Use pre-calculated score from technical_details as fallback
+      let score = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+      if (score === 0 && technical_details?.score) {
+        score = technical_details.score;
+        console.log(`📊 Using pre-calculated score from technical_details: ${score}%`);
       }
+
+      console.log(`📊 ${isApplicationAssessment ? 'Application Assessment' : 'Regular Survey'} Scoring: ${totalScore}/${maxScore} = ${score}%`);
 
       // Check for duplicate submission (same email for same survey)
       const { data: existingResponse } = await supabaseAdmin
@@ -2186,7 +2292,148 @@ Admin panelinden detaylı inceleme yapabilirsiniz.
     return technicalAssessmentController.analyzeTechnicalAssessment(req, res, next);
   }
 
-  // Adaptive Technical Assessment için özel metod
+  // Public link üzerinden gelen aşamalı değerlendirme → adaptive_assessment_responses tablosuna kaydet
+  async submitAdaptiveFromPublicLink(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+    surveyLink: any
+  ) {
+    try {
+      const {
+        participant_name,
+        participant_email,
+        responses,
+        phase_scores = [],
+        overall_score = 0,
+        overall_percentage = 0,
+        max_possible_score: bodyMaxPossible,
+        leadership_type,
+        leadership_breakdown = {},
+        case_id,
+        status = 'completed'
+      } = req.body;
+
+      // phase_scores'dan gerçek max hesapla; frontend max_possible_score göndermediyse kullan
+      const phaseScoresArr = Array.isArray(phase_scores) ? phase_scores : [];
+      const computedMax = phaseScoresArr.reduce((sum: number, p: any) => sum + (p.maxScore || 0), 0);
+      const maxPossibleScore = bodyMaxPossible ?? (computedMax || 100);
+
+      if (!participant_name || !responses) {
+        return res.status(400).json({
+          success: false,
+          error: 'Participant name and responses are required',
+          code: 'MISSING_FIELDS'
+        } as ApiResponse);
+      }
+
+      if (!supabaseAdmin) {
+        return res.status(500).json({
+          success: false,
+          error: 'Service role key not configured',
+          code: 'SERVICE_ROLE_MISSING'
+        } as ApiResponse);
+      }
+
+      const finalEmail = participant_email || `anonim-${Date.now()}@anket.com`;
+
+      // responses array → raw_responses object
+      const rawAnswers: Record<string, any> = {};
+      if (Array.isArray(responses)) {
+        responses.forEach((r: any) => {
+          rawAnswers[r.questionId || r.question_id] = {
+            answer: r.answer,
+            jobType: r.jobType,
+            phase: r.phase,
+            type: r.type
+          };
+        });
+      }
+
+      // phase_scores array → phase_scores object
+      const phaseScoresObj: Record<string, any> = {};
+      const jobTypesSet = new Set<string>();
+      if (Array.isArray(phase_scores)) {
+        phaseScoresArr.forEach((p: any, idx: number) => {
+          const key = p.jobType && p.phase ? `${p.jobType}_${p.phase}` : `phase_${idx}`;
+          phaseScoresObj[key] = {
+            score: p.score,
+            maxScore: p.maxScore,
+            percentage: p.percentage,
+            correctCount: p.correctCount,
+            totalCount: p.totalCount,
+            hasAccess: true
+          };
+          if (p.jobType) jobTypesSet.add(p.jobType);
+        });
+      }
+
+      // 'Leadership' faz adıdır, teknik job type değil - listeden çıkar
+      const jobTypes = Array.from(jobTypesSet).filter((jt: string) => jt !== 'Leadership');
+      if (jobTypes.length === 0) jobTypes.push('General');
+
+      const analysisResults = {
+        leadershipType: leadership_type,
+        leadershipBreakdown: leadership_breakdown
+      };
+
+      const { data: adaptiveResponse, error } = await supabaseAdmin
+        .from('adaptive_assessment_responses')
+        .insert({
+          case_id: case_id || surveyLink.case_id,
+          survey_link_id: surveyLink.id,
+          participant_name,
+          participant_email: finalEmail,
+          job_types: jobTypes,
+          assessment_type: 'adaptive-technical-assessment',
+          raw_responses: rawAnswers,
+          phase_scores: phaseScoresObj,
+          analysis_results: analysisResults,
+          overall_score: Math.round(Number(overall_score)) || 0,
+          max_possible_score: Math.round(Number(maxPossibleScore)) || 100,
+          overall_percentage: Math.round(Number(overall_percentage)) || 0,
+          status,
+          completed_at: new Date().toISOString(),
+          submitted_at: new Date().toISOString()
+        })
+        .select('id, overall_percentage, status')
+        .single();
+
+      if (error) {
+        console.error('❌ Adaptive assessment insert error:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to save adaptive assessment response',
+          code: 'ADAPTIVE_SAVE_FAILED'
+        } as ApiResponse);
+      }
+
+      // Survey link participant sayısını güncelle
+      try {
+        await supabaseAdmin.rpc('increment_survey_link_participants' as any, {
+          link_id: surveyLink.id
+        });
+      } catch (rpcErr) {
+        console.warn('Could not increment survey link participants:', rpcErr);
+      }
+
+      console.log('✅ Adaptive assessment saved to adaptive_assessment_responses:', adaptiveResponse?.id);
+
+      return res.status(201).json({
+        success: true,
+        data: {
+          id: adaptiveResponse?.id,
+          overall_percentage: adaptiveResponse?.overall_percentage,
+          status: adaptiveResponse?.status
+        },
+        message: 'Aşamalı değerlendirme başarıyla kaydedildi'
+      } as ApiResponse<any>);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Adaptive Technical Assessment için özel metod (submitSurveyResponse / adaptive-assessment/submit route'undan)
   async submitAdaptiveAssessmentResponse(req: Request, res: Response, next: NextFunction) {
     try {
       const {

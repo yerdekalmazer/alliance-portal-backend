@@ -1,6 +1,9 @@
 /**
  * BACKEND SURVEY GENERATION UTILITY
  * Dynamic survey sorularını case bilgisine göre generate eder
+ *
+ * collectPersonalInfo toggle frontend tarafında handle edilir.
+ * Bu utility sadece anket sorularını üretir.
  */
 
 interface Question {
@@ -15,6 +18,8 @@ interface Question {
   isFirstStage?: boolean;
   difficulty?: string;
   points?: number | any;
+  leadershipMapping?: Record<number, string>;
+  leadershipScoring?: Record<number, { points: number; criteria: Record<string, number> }>;
   [key: string]: any;
 }
 
@@ -30,6 +35,8 @@ interface SurveyQuestion {
   points?: number | any;
   sourceCategory?: string;
   jobType?: string;
+  leadershipMapping?: Record<number, string>;
+  leadershipScoring?: Record<number, { points: number; criteria: Record<string, number> }>;
   [key: string]: any;
 }
 
@@ -58,383 +65,150 @@ interface CaseScenario {
 }
 
 /**
- * Main function: Generate dynamic survey questions based on template and case
+ * Generate dynamic survey questions based on template type and case data
  */
 export function generateDynamicSurveyQuestions(
   template: SurveyTemplate,
   caseScenario: CaseScenario
 ): SurveyQuestion[] {
-  console.log('🔀 Backend Survey Generation - Template:', template.title);
-  console.log('📊 Template type:', template.type);
-  console.log('📊 Template is_dynamic:', template.is_dynamic);
-  console.log('🎯 Case jobTypes:', caseScenario.jobTypes);
-  console.log('🎯 Case domain:', caseScenario.domain);
-  
-  // Check if template is dynamic
+  console.log('🔀 Backend Survey Generation:', { type: template.type, domain: caseScenario.domain, jobTypes: caseScenario.jobTypes });
+
   if (!template.is_dynamic) {
-    console.log('📋 Statik template - mevcut soruları kullanıyor');
     return template.questions || [];
   }
-  
-  // Generate dynamic questions based on template type
+
   if (template.type === 'application-initial-assessment') {
-    console.log('🎯 Başvuru ve İlk Değerlendirme anketi için case-özel sorular seçiliyor...');
-    
-    // Kişisel bilgi sorularını ekle
-    const personalQuestions = getPersonalInfoQuestions();
-    console.log(`📝 ${personalQuestions.length} kişisel bilgi sorusu eklendi`);
-    
-    // Case domain'ine göre sorular (simplified version)
-    const domainQuestions = generateSimpleDomainQuestions(caseScenario, 10);
-    console.log(`✅ Domain'e özel ${domainQuestions.length} soru seçildi`);
-    
-    // Kişisel bilgi + domain soruları
-    const allDynamicQuestions = [...personalQuestions, ...domainQuestions];
-    console.log(`🎯 Toplam ${allDynamicQuestions.length} dinamik soru hazırlandı`);
-    
-    return allDynamicQuestions;
+    return generateInitialAssessmentQuestions(caseScenario, 10);
   }
-  
-  if (template.type === 'initial-assessment') {
-    console.log('🎯 İlk Değerlendirme anketi için case-özel sorular seçiliyor...');
-    
-    // Kişisel bilgi sorularını ekle
-    const personalQuestions = getPersonalInfoQuestions();
-    console.log(`📝 ${personalQuestions.length} kişisel bilgi sorusu eklendi`);
-    
-    // Case'e özel sorular
-    const caseSpecificQuestions = generateSimpleDomainQuestions(caseScenario, 5);
-    console.log(`✅ Case'e özel ${caseSpecificQuestions.length} soru seçildi`);
-    
-    // Kişisel bilgi + case özel sorular
-    const allDynamicQuestions = [...personalQuestions, ...caseSpecificQuestions];
-    console.log(`🎯 Toplam ${allDynamicQuestions.length} dinamik soru hazırlandı`);
-    
-    return allDynamicQuestions;
-  }
-  
-  if (template.type === 'technical-assessment') {
-    console.log('🔧 Teknik Değerlendirme anketi için sorular seçiliyor...');
-    
-    const technicalQuestions = generateSimpleTechnicalQuestions(caseScenario, 8);
-    console.log(`✅ Teknik ${technicalQuestions.length} soru seçildi`);
-    
-    return technicalQuestions;
-  }
-  
-  // Default: return template questions
-  console.log('📋 Statik template soruları kullanılıyor (fallback)');
+
   return template.questions || [];
 }
 
 /**
- * Get personal information questions
+ * Generate initial assessment questions filtered by case job types and domain
  */
-function getPersonalInfoQuestions(): SurveyQuestion[] {
-  return [
-    {
-      id: 'personal-name',
-      type: 'text',
-      question: 'Tam Adınız',
-      required: true,
-      order: 1,
-      category: 'personal'
-    },
-    {
-      id: 'personal-email',
-      type: 'text',
-      question: 'E-posta Adresiniz',
-      required: true,
-      order: 2,
-      category: 'personal'
-    },
-    {
-      id: 'personal-phone',
-      type: 'text',
-      question: 'Telefon Numaranız',
-      required: true,
-      order: 3,
-      category: 'personal'
-    },
-    {
-      id: 'personal-location-konya',
-      type: 'radio',
-      question: 'Konya\'da mısınız?',
-      options: ['Evet, Konya\'dayım', 'Hayır, başka şehirdeyim ama Konya\'ya gelebilirim', 'Hayır, remote çalışmayı tercih ederim'],
-      required: true,
-      order: 4,
-      category: 'personal'
-    },
-    {
-      id: 'personal-work-status',
-      type: 'radio',
-      question: 'Çalışma Durumunuz',
-      options: [
-        'Aktif olarak çalışmıyorum',
-        'Part-time çalışıyorum',
-        'Full-time çalışıyorum',
-        'Freelancer olarak çalışıyorum',
-        'Öğrenciyim'
-      ],
-      required: true,
-      order: 5,
-      category: 'personal'
-    },
-    {
-      id: 'personal-experience-years',
-      type: 'radio',
-      question: 'Kaç yıllık deneyiminiz var?',
-      options: [
-        '0-1 yıl (Yeni başlayan)',
-        '1-3 yıl (Junior)',
-        '3-5 yıl (Mid-level)',
-        '5-8 yıl (Senior)',
-        '8+ yıl (Expert)'
-      ],
-      required: true,
-      order: 6,
-      category: 'personal'
-    }
-  ];
-}
-
-/**
- * Generate simple domain-specific questions
- * This is a simplified version - frontend has the full question bank
- */
-function generateSimpleDomainQuestions(caseScenario: CaseScenario, maxQuestions: number): SurveyQuestion[] {
-  const questions: SurveyQuestion[] = [];
-  let order = 7; // Start after personal questions
-  
-  // General questions that work for all domains
-  const generalQuestions = [
-    {
-      id: 'initial-001',
-      type: 'radio',
-      question: 'Hangi alanda kendinizi en güçlü hissediyorsunuz?',
-      options: [
-        'Tasarım ve Yaratıcılık',
-        'Yazılım Geliştirme',
-        'Analiz ve Problem Çözme',
-        'İletişim ve Koordinasyon'
-      ],
-      correct: [0, 1, 2, 3],
-      points: 10,
-      required: true,
-      order: order++,
-      category: 'initial-assessment'
-    },
-    {
-      id: 'initial-002',
-      type: 'radio',
-      question: 'Yeni bir şey öğrenirken hangi yöntemi tercih edersiniz?',
-      options: [
-        'Video eğitimler izlerim',
-        'Kitap ve dokümantasyon okurum',
-        'Uygulamalı projeler yaparım',
-        'Birinden öğrenirim'
-      ],
-      correct: [1, 2],
-      points: 10,
-      required: true,
-      order: order++,
-      category: 'initial-assessment'
-    },
-    {
-      id: 'initial-003',
-      type: 'radio',
-      question: 'Ekip çalışmasında kendinizi nasıl tanımlarsınız?',
-      options: [
-        'Liderlik yapmayı severim',
-        'İyi bir takım oyuncusuyum',
-        'Teknik konularda uzmanım',
-        'Organizasyon ve planlama konusunda iyiyim'
-      ],
-      correct: [0, 1, 2, 3],
-      points: 10,
-      required: true,
-      order: order++,
-      category: 'initial-assessment'
-    },
-    {
-      id: 'initial-004',
-      type: 'radio',
-      question: 'Bir problemi çözerken ilk ne yaparsınız?',
-      options: [
-        'Hemen çözüm aramaya başlarım',
-        'Problemi analiz edip parçalara bölerim',
-        'Deneyimli birinden yardım isterim',
-        'İnternetten araştırma yaparım'
-      ],
-      correct: [1],
-      points: 15,
-      required: true,
-      order: order++,
-      category: 'initial-assessment'
-    },
-    {
-      id: 'initial-005',
-      type: 'radio',
-      question: 'Yazılım geliştirme deneyiminiz kaç yıl?',
-      options: [
-        '0-1 yıl (Yeni başlayan)',
-        '1-3 yıl (Junior)',
-        '3-5 yıl (Mid-level)',
-        '5+ yıl (Senior)'
-      ],
-      correct: [0, 1, 2, 3],
-      points: 10,
-      required: true,
-      order: order++,
-      category: 'initial-assessment'
-    }
-  ];
-  
-  // Add domain-specific questions if we recognize the domain
-  const domain = caseScenario.domain?.toLowerCase();
-  if (domain && domain.includes('web')) {
-    questions.push({
-      id: 'initial-web-001',
-      type: 'radio',
-      question: 'Web platformu geliştirirken en önemli önceliğiniz ne olur?',
-      options: [
-        'Görsel tasarım ve kullanıcı deneyimi',
-        'Performans ve hız optimizasyonu',
-        'Güvenlik ve veri koruması',
-        'Kolay bakım ve kod kalitesi'
-      ],
-      correct: [0, 1, 2, 3],
-      points: 12,
-      required: true,
-      order: order++,
-      category: 'initial-assessment',
-      domain: 'web-platformu'
-    });
-  }
-  
-  if (domain && domain.includes('mobil')) {
-    questions.push({
-      id: 'initial-mobile-001',
-      type: 'radio',
-      question: 'Mobil uygulama geliştirirken en kritik faktör hangisidir?',
-      options: [
-        'Platform uyumluluğu (iOS/Android)',
-        'Batarya optimizasyonu',
-        'Çevrimdışı çalışabilme',
-        'Hızlı başlatma süresi'
-      ],
-      correct: [0, 3],
-      points: 15,
-      required: true,
-      order: order++,
-      category: 'initial-assessment',
-      domain: 'mobil-uygulama'
-    });
-  }
-  
-  // Combine general and domain-specific questions
-  const allQuestions = [...generalQuestions, ...questions];
-  
-  // Shuffle and limit to maxQuestions
-  return shuffleArray(allQuestions).slice(0, maxQuestions);
-}
-
-/**
- * Generate simple technical questions
- */
-function generateSimpleTechnicalQuestions(caseScenario: CaseScenario, maxQuestions: number): SurveyQuestion[] {
-  const questions: SurveyQuestion[] = [];
+function generateInitialAssessmentQuestions(caseScenario: CaseScenario, maxQuestions: number): SurveyQuestion[] {
   let order = 1;
-  
-  // Add technical questions based on job types
-  caseScenario.jobTypes.forEach(jobType => {
-    if (jobType.toLowerCase().includes('frontend') || jobType.toLowerCase().includes('web')) {
-      questions.push({
-        id: `tech-frontend-${order}`,
-        type: 'radio',
-        question: 'Web geliştirmede HTML, CSS ve JavaScript arasındaki temel fark nedir?',
-        options: [
-          'Hepsi aynı işi yapar',
-          'HTML yapı, CSS stil, JavaScript işlevsellik sağlar',
-          'HTML stil, CSS yapı, JavaScript veri sağlar',
-          'Sadece JavaScript yeterlidir'
-        ],
-        correct: [1],
-        points: 10,
-        required: true,
-        order: order++,
-        category: 'technical-assessment',
-        jobType: jobType
-      });
+  const allQuestions: SurveyQuestion[] = [];
+
+  // General questions
+  const generalQuestions: SurveyQuestion[] = [
+    {
+      id: 'init-gen-001', type: 'radio', question: 'Hangi alanda kendinizi en güçlü hissediyorsunuz?',
+      options: ['Tasarım ve Yaratıcılık', 'Yazılım Geliştirme', 'Analiz ve Problem Çözme', 'İletişim ve Koordinasyon'],
+      correct: [0, 1, 2, 3], points: 10, required: true, order: order++, category: 'initial-assessment'
+    },
+    {
+      id: 'init-gen-002', type: 'radio', question: 'Yeni bir şey öğrenirken hangi yöntemi tercih edersiniz?',
+      options: ['Video eğitimler izlerim', 'Kitap ve dokümantasyon okurum', 'Uygulamalı projeler yaparım', 'Birinden öğrenirim'],
+      correct: [1, 2], points: 10, required: true, order: order++, category: 'initial-assessment'
+    },
+    {
+      id: 'init-gen-003', type: 'radio', question: 'Ekip çalışmasında kendinizi nasıl tanımlarsınız?',
+      options: ['Liderlik yapmayı severim', 'İyi bir takım oyuncusuyum', 'Teknik konularda uzmanım', 'Organizasyon ve planlama konusunda iyiyim'],
+      correct: [0, 1, 2, 3], points: 10, required: true, order: order++, category: 'initial-assessment'
+    },
+    {
+      id: 'init-gen-004', type: 'radio', question: 'Bir problemi çözerken ilk ne yaparsınız?',
+      options: ['Hemen çözüm aramaya başlarım', 'Problemi analiz edip parçalara bölerim', 'Deneyimli birinden yardım isterim', 'İnternetten araştırma yaparım'],
+      correct: [1], points: 15, required: true, order: order++, category: 'initial-assessment'
+    },
+    {
+      id: 'init-gen-005', type: 'radio', question: 'Yazılım geliştirme deneyiminiz kaç yıl?',
+      options: ['0-1 yıl (Yeni başlayan)', '1-3 yıl (Junior)', '3-5 yıl (Mid-level)', '5+ yıl (Senior)'],
+      correct: [0, 1, 2, 3], points: 10, required: true, order: order++, category: 'initial-assessment'
     }
-    
-    if (jobType.toLowerCase().includes('backend')) {
-      questions.push({
-        id: `tech-backend-${order}`,
-        type: 'radio',
-        question: 'API (Application Programming Interface) ne için kullanılır?',
-        options: [
-          'Sadece web sitesi tasarımı için',
-          'Farklı yazılımlar arasında veri alışverişi için',
-          'Sadece mobil uygulama geliştirme için',
-          'Veritabanı oluşturmak için'
-        ],
-        correct: [1],
-        points: 10,
-        required: true,
-        order: order++,
-        category: 'technical-assessment',
-        jobType: jobType
-      });
-    }
-  });
-  
-  // Add general technical questions if not enough specific ones
-  if (questions.length < maxQuestions) {
-    const generalTechQuestions = [
+  ];
+  allQuestions.push(...generalQuestions);
+
+  // Job type specific questions
+  const jobTypeQuestionMap: Record<string, SurveyQuestion[]> = {
+    'Frontend Developer': [
       {
-        id: 'tech-general-001',
-        type: 'radio',
-        question: 'Responsive web tasarımının temel amacı nedir?',
-        options: [
-          'Web sitesini renkli yapmak',
-          'Farklı cihaz boyutlarına uyum sağlamak',
-          'Sadece mobil cihazlar için optimize etmek',
-          'Animasyon eklemek'
-        ],
-        correct: [1],
-        points: 10,
-        required: true,
-        order: order++,
-        category: 'technical-assessment'
-      },
-      {
-        id: 'tech-general-002',
-        type: 'radio',
-        question: 'Versiyon kontrol sistemi (Git) neden kullanılır?',
-        options: [
-          'Sadece yedekleme için',
-          'Kod değişikliklerini takip etmek ve işbirliği yapmak için',
-          'Sadece büyük projeler için',
-          'Otomatik kod yazmak için'
-        ],
-        correct: [1],
-        points: 10,
-        required: true,
-        order: order++,
-        category: 'technical-assessment'
+        id: 'init-fe-001', type: 'radio', question: 'Kullanıcı arayüzü geliştirirken en çok hangi konuya odaklanırsınız?',
+        options: ['Görsel tasarım ve estetiğe', 'Kullanıcı deneyimi ve kullanışlılığa', 'Performans ve hıza', 'Responsive tasarım ve uyumluluk'],
+        correct: [1, 3], points: 15, required: true, order: order++, category: 'initial-assessment', jobType: 'Frontend Developer'
       }
-    ];
-    
-    questions.push(...generalTechQuestions);
+    ],
+    'Backend Developer': [
+      {
+        id: 'init-be-001', type: 'radio', question: 'Backend geliştirmede en önemli gördüğünüz konu hangisidir?',
+        options: ['Veritabanı tasarımı ve optimizasyonu', 'API tasarımı ve güvenlik', 'Performans ve ölçeklenebilirlik', 'Veri güvenliği ve yedekleme'],
+        correct: [1, 2], points: 15, required: true, order: order++, category: 'initial-assessment', jobType: 'Backend Developer'
+      }
+    ],
+    'UI/UX Designer': [
+      {
+        id: 'init-ux-001', type: 'radio', question: 'Kullanıcı deneyimi tasarlarken en önemli ilkeniz nedir?',
+        options: ['Kullanıcının ihtiyaçlarını anlamak', 'Görsel çekicilik sağlamak', 'Teknik sınırları gözetmek', 'Marka kimliğini yansıtmak'],
+        correct: [0], points: 20, required: true, order: order++, category: 'initial-assessment', jobType: 'UI/UX Designer'
+      }
+    ],
+    'Mobile Developer': [
+      {
+        id: 'init-mob-001', type: 'radio', question: 'Mobil uygulama geliştirirken en kritik faktör hangisidir?',
+        options: ['Platform uyumluluğu (iOS/Android)', 'Batarya optimizasyonu', 'Çevrimdışı çalışabilme', 'Hızlı başlatma süresi'],
+        correct: [0, 3], points: 15, required: true, order: order++, category: 'initial-assessment', jobType: 'Mobile Developer'
+      }
+    ],
+    'Game Developer': [
+      {
+        id: 'init-game-001', type: 'radio', question: 'Oyun geliştirirken en zorlu kısım hangisidir?',
+        options: ['Grafik ve görsel efektler', 'Oyun mekaniği ve dengesi', 'Ses ve müzik entegrasyonu', 'Performans optimizasyonu'],
+        correct: [1, 3], points: 15, required: true, order: order++, category: 'initial-assessment', jobType: 'Game Developer'
+      }
+    ],
+    'Data Scientist': [
+      {
+        id: 'init-ds-001', type: 'radio', question: 'Veri bilimi projelerinde ilk adımınız ne olur?',
+        options: ['Veri toplama ve temizleme', 'Problem tanımlama ve hipotez oluşturma', 'Algoritma seçimi ve model geliştirme', 'Sonuçları görselleştirme'],
+        correct: [1], points: 15, required: true, order: order++, category: 'initial-assessment', jobType: 'Data Scientist'
+      }
+    ],
+    'Product Manager': [
+      {
+        id: 'init-pm-001', type: 'radio', question: 'Ürün yönetiminde en önemli gördüğünüz süreç hangisidir?',
+        options: ['Kullanıcı ihtiyaçlarını anlama ve araştırma', 'Özellik önceliklendirme ve roadmap oluşturma', 'Takım koordinasyonu ve iletişim', 'Metrik takibi ve analiz'],
+        correct: [0, 1], points: 15, required: true, order: order++, category: 'initial-assessment', jobType: 'Product Manager'
+      }
+    ],
+    'Video Producer': [
+      {
+        id: 'init-vid-001', type: 'radio', question: 'Video içeriği üretirken hikaye anlatımında en önemli element nedir?',
+        options: ['Görsel kalite ve çekim teknikleri', 'Ses kalitesi ve müzik seçimi', 'Senaryonun güçlü olması', 'Montaj ve post-prodüksiyon'],
+        correct: [2], points: 20, required: true, order: order++, category: 'initial-assessment', jobType: 'Video Producer'
+      }
+    ]
+  };
+
+  // Add job type specific questions
+  for (const jt of caseScenario.jobTypes) {
+    const jtQuestions = jobTypeQuestionMap[jt];
+    if (jtQuestions) {
+      allQuestions.push(...jtQuestions);
+    }
   }
-  
-  return questions.slice(0, maxQuestions);
+
+  // Domain-based questions
+  const domain = caseScenario.domain?.toLowerCase() || '';
+  if (domain.includes('web')) {
+    allQuestions.push({
+      id: 'init-webgen-001', type: 'radio', question: 'Web uygulaması geliştirirken hangi teknoloji yığınında kendinizi daha rahat hissedersiniz?',
+      options: ['Frontend odaklı (React, Vue, Angular)', 'Backend odaklı (Node.js, Python, PHP)', 'Full-stack geliştirme', 'Tasarım ve UX odaklı'],
+      correct: [0, 1, 2, 3], points: 10, required: true, order: order++, category: 'initial-assessment', domain: 'web-platformu'
+    });
+  }
+  if (domain.includes('mobil')) {
+    allQuestions.push({
+      id: 'init-mobgen-001', type: 'radio', question: 'Mobil uygulamalarda kullanıcı deneyimi için en kritik faktör hangisidir?',
+      options: ['Hızlı açılış süresi', 'Sezgisel navigasyon', 'Offline çalışabilirlik', 'Push notification sistemi'],
+      correct: [0, 1, 2], points: 10, required: true, order: order++, category: 'initial-assessment', domain: 'mobil-uygulama'
+    });
+  }
+
+  return shuffleArray(allQuestions).slice(0, maxQuestions).map((q, i) => ({ ...q, order: i + 1 }));
 }
 
-/**
- * Shuffle array utility
- */
 function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array];
   for (let i = shuffled.length - 1; i > 0; i--) {
@@ -445,8 +219,7 @@ function shuffleArray<T>(array: T[]): T[] {
 }
 
 /**
- * Calculate assessment score from survey responses (BACKEND VERSION - IMPROVED)
- * Same logic as frontend for consistency
+ * Calculate assessment score from survey responses
  */
 export function calculateAssessmentScore(
   responses: Record<string, any>,
@@ -472,11 +245,7 @@ export function calculateAssessmentScore(
   const categoryScores: Record<string, number> = {};
   const detailedBreakdown: Array<any> = [];
 
-  console.log('🔢 BACKEND SCORING - Calculating scores for', surveyQuestions.length, 'questions');
-  console.log('📊 User responses count:', Object.keys(responses).length);
-
   surveyQuestions.forEach(question => {
-    // Handle both old and new response formats
     let response;
     if (Array.isArray(responses)) {
       const responseItem = responses.find((r: any) => r.questionId === question.id);
@@ -484,64 +253,43 @@ export function calculateAssessmentScore(
     } else {
       response = responses[question.id];
     }
-    
-    console.log(`🔍 Processing question ${question.id}:`, { hasResponse: response !== undefined });
-    
-    if (response === undefined || response === null) {
-      console.log(`❌ No response for question ${question.id}`);
-      return;
-    }
 
-    // Filter personal info questions (no scoring)
-    const personalInfoTypes = ['text', 'email', 'phone', 'textarea'];
-    const personalInfoKeywords = ['personal', 'kişisel', 'ad', 'soyad', 'email', 'telefon', 'phone'];
-    const isPersonalInfo = personalInfoTypes.includes(question.type) || 
-                          personalInfoKeywords.some(keyword => question.id.toLowerCase().includes(keyword));
-    
-    if (isPersonalInfo) {
-      console.log(`📝 Personal info question, skipping scoring: ${question.id}`);
-      return;
-    }
+    if (response === undefined || response === null) return;
 
-    // Parse user answer
+    // Skip personal info questions
+    if (['text', 'email', 'phone', 'textarea'].includes(question.type)) return;
+    if (question.id.includes('personal')) return;
+
     let userAnswer: number;
     if (typeof response === 'string' && response.includes('Seçenek')) {
       const optionMatch = response.match(/Seçenek ([A-D])/);
-      if (optionMatch) {
-        userAnswer = optionMatch[1].charCodeAt(0) - 65; // A=0, B=1, C=2, D=3
-      } else {
-        userAnswer = 0;
-      }
+      userAnswer = optionMatch ? optionMatch[1].charCodeAt(0) - 65 : 0;
     } else {
       userAnswer = parseInt(response.toString());
       if (isNaN(userAnswer)) {
         if (question.category === 'leadership-scenarios' || question.sourceCategory === 'leadership-scenarios') {
-          console.log(`🎯 Leadership question with empty answer: ${question.id}, using random answer`);
           userAnswer = Math.floor(Math.random() * 4);
         } else {
-          console.log(`❌ Invalid numeric answer: ${response}`);
           return;
         }
       }
     }
-    
+
     let isCorrect = false;
     let questionScore = 0;
     const questionCategory = question.sourceCategory || question.jobType || question.category || 'General';
 
-    // Initialize category if not exists
     if (!categoryScores[questionCategory]) {
       categoryScores[questionCategory] = 0;
     }
 
-    // Check if answer is correct
+    // Check correctness
     let isPreferenceQuestion = false;
     if (question.correct !== undefined) {
       if (Array.isArray(question.correct)) {
-        // Eğer tüm seçenekler doğru ise (preference/tercih sorusu)
         if (question.options && question.correct.length === question.options.length) {
           isPreferenceQuestion = true;
-          isCorrect = true; // Tercih soruları her zaman doğru
+          isCorrect = true;
         } else {
           isCorrect = question.correct.includes(userAnswer);
         }
@@ -549,148 +297,65 @@ export function calculateAssessmentScore(
         isCorrect = userAnswer === question.correct;
       }
     }
-    
-    // Leadership scenarios special handling
-    if (question.category === 'leadership-scenarios' || question.sourceCategory === 'leadership-scenarios') {
-      console.log(`🎯 Processing leadership question: ${question.id}`);
-      
-      if ((question as any).leadershipMapping && (question as any).leadershipScoring) {
-        const leadershipType = (question as any).leadershipMapping[userAnswer];
-        const scoring = (question as any).leadershipScoring[userAnswer];
-        
-        if (leadershipType && scoring) {
-          questionScore = scoring.points || question.points || 20; // ✅ DÜZELTME: question.points kullan
-          console.log(`🎯 Leadership scoring: ${leadershipType} = ${questionScore} points (from ${question.points ? 'question.points' : 'default'})`);
-        } else {
-          questionScore = question.points || 20; // ✅ DÜZELTME: question.points kullan
-        }
-      } else {
-        // ✅ DÜZELTME: Önce question.points'e bak
-        if (question.points && typeof question.points === 'number') {
-          questionScore = question.points;
-          console.log(`🎯 Leadership scoring (question.points): ${questionScore} points`);
-        } else {
-          const leadershipScores = [18, 20, 19, 21];
-          questionScore = leadershipScores[userAnswer] || 20;
-          console.log(`🎯 Default leadership scoring: ${questionScore} points`);
-        }
-      }
-      
-      isCorrect = true;
-    }
 
-    // Calculate score based on question type
-    if (question.points && typeof question.points === 'object') {
-      if (question.points.yonlendirilebilirTeknik) {
-        const categories = ['yonlendirilebilirTeknik', 'takimLideri', 'yeniBaslayan', 'operasyonelYetenek'];
-        let totalCategoryScore = 0;
-        let categoryCount = 0;
-        
-        categories.forEach(cat => {
-          if (question.points[cat] && question.points[cat][userAnswer] !== undefined) {
-            totalCategoryScore += question.points[cat][userAnswer];
-            categoryCount++;
-          }
-        });
-        
-        if (categoryCount > 0) {
-          questionScore = Math.round(totalCategoryScore / categoryCount);
-        }
+    // Leadership scoring
+    if (question.category === 'leadership-scenarios' || question.sourceCategory === 'leadership-scenarios') {
+      if (question.leadershipScoring?.[userAnswer]) {
+        questionScore = question.leadershipScoring[userAnswer].points || question.points || 20;
+      } else if (typeof question.points === 'number') {
+        questionScore = question.points;
       } else {
-        // Category-based scoring - use AVERAGE to prevent double counting
-        let totalCategoryScore = 0;
-        let categoryCount = 0;
-        
-        Object.keys(question.points).forEach(category => {
-          if (question.points[category] && question.points[category][userAnswer] !== undefined) {
-            const score = question.points[category][userAnswer];
-            categoryScores[category] = (categoryScores[category] || 0) + score;
-            totalCategoryScore += score;
-            categoryCount++;
-          }
-        });
-        
-        // Use average to prevent score inflation when multiple categories exist
-        if (categoryCount > 0) {
-          questionScore = Math.round(totalCategoryScore / categoryCount);
+        questionScore = 20;
+      }
+      isCorrect = true;
+    } else if (question.points && typeof question.points === 'object') {
+      // Category-based scoring (multi-dimensional)
+      let totalCategoryScore = 0;
+      let categoryCount = 0;
+      Object.keys(question.points).forEach(cat => {
+        if (question.points[cat]?.[userAnswer] !== undefined) {
+          const score = question.points[cat][userAnswer];
+          categoryScores[cat] = (categoryScores[cat] || 0) + score;
+          totalCategoryScore += score;
+          categoryCount++;
         }
+      });
+      if (categoryCount > 0) {
+        questionScore = Math.round(totalCategoryScore / categoryCount);
       }
     } else {
-      if (!(question.category === 'leadership-scenarios' || question.sourceCategory === 'leadership-scenarios')) {
-        if (isPreferenceQuestion) {
-          // Tercih soruları: Daha düşük puan (profil oluşturma için kullanılır, test değil)
-          questionScore = 5; // Sabit 5 puan
-        } else if (isCorrect) {
-          questionScore = question.points || 10;
-        } else {
-          questionScore = 0;
-        }
+      if (isPreferenceQuestion) {
+        questionScore = 5;
+      } else if (isCorrect) {
+        questionScore = typeof question.points === 'number' ? question.points : 10;
       }
     }
 
-    // Add to category and total score
     categoryScores[questionCategory] += questionScore;
     totalScore += questionScore;
-    
-    // Calculate max possible score for this question
+
     let maxQuestionScore = 10;
-    
-    // Tercih soruları için max score düşük
     if (isPreferenceQuestion) {
       maxQuestionScore = 5;
-    } else if (question.points && typeof question.points === 'object') {
-      if (question.points.yonlendirilebilirTeknik) {
-        const categories = ['yonlendirilebilirTeknik', 'takimLideri', 'yeniBaslayan', 'operasyonelYetenek'];
-        let maxCategoryScore = 0;
-        
-        categories.forEach(cat => {
-          if (question.points[cat] && Array.isArray(question.points[cat])) {
-            const categoryMax = Math.max(...question.points[cat]);
-            maxCategoryScore = Math.max(maxCategoryScore, categoryMax);
-          }
-        });
-        
-        maxQuestionScore = maxCategoryScore;
-      } else {
-        // Category-based scoring - find AVERAGE max across all categories
-        let totalMaxScore = 0;
-        let categoryCount = 0;
-        
-        Object.keys(question.points).forEach(category => {
-          if (question.points[category] && Array.isArray(question.points[category])) {
-            const categoryMax = Math.max(...question.points[category]);
-            totalMaxScore += categoryMax;
-            categoryCount++;
-          }
-        });
-        
-        // Use average to match the average scoring method
-        maxQuestionScore = categoryCount > 0 ? Math.round(totalMaxScore / categoryCount) : 10;
-      }
     } else if (typeof question.points === 'number') {
       maxQuestionScore = question.points;
     }
-    
     maxPossibleScore += maxQuestionScore;
 
-    // Add to detailed breakdown
     detailedBreakdown.push({
       questionId: question.id,
-      question: question.question || 'No question text',
+      question: question.question || '',
       userAnswer,
       isCorrect,
       points: questionScore,
       maxPoints: maxQuestionScore,
       category: questionCategory
     });
-
-    console.log(`📝 Question ${question.id}: Answer=${userAnswer}, Score=${questionScore}/${maxQuestionScore}, Category=${questionCategory}`);
   });
 
-  // Convert to percentage (0-100)
   const percentageScore = maxPossibleScore > 0 ? Math.round((totalScore / maxPossibleScore) * 100) : 0;
 
-  // Calculate leadership type scores
+  // Leadership type aggregation
   const leadershipTypeScores: Record<string, number> = {
     'operasyonel-yetenek': 0,
     'teknik-leader': 0,
@@ -699,53 +364,37 @@ export function calculateAssessmentScore(
   };
 
   surveyQuestions.forEach(question => {
-    if (question.category === 'leadership-scenarios') {
-      let response;
-      if (Array.isArray(responses)) {
-        const responseItem = responses.find((r: any) => r.questionId === question.id);
-        response = responseItem?.answer;
-      } else {
-        response = responses[question.id];
-      }
-      
-      if (response !== undefined && response !== null) {
-        let userAnswer: number;
-        if (typeof response === 'string' && response.includes('Seçenek')) {
-          const optionMatch = response.match(/Seçenek ([A-D])/);
-          if (optionMatch) {
-            userAnswer = optionMatch[1].charCodeAt(0) - 65;
-          } else {
-            userAnswer = 0;
-          }
-        } else {
-          userAnswer = parseInt(String(response)) || 0;
-        }
-        
-        if ((question as any).leadershipMapping && (question as any).leadershipScoring) {
-          const leadershipType = (question as any).leadershipMapping[userAnswer];
-          if (leadershipType) {
-            const scoring = (question as any).leadershipScoring[userAnswer];
-            if (scoring && scoring.points) {
-              leadershipTypeScores[leadershipType] += scoring.points;
-              console.log(`🎯 Leadership type score: ${leadershipType} += ${scoring.points}`);
-            }
-          }
-        }
+    if (question.category !== 'leadership-scenarios' && question.sourceCategory !== 'leadership-scenarios') return;
+
+    let response;
+    if (Array.isArray(responses)) {
+      const responseItem = responses.find((r: any) => r.questionId === question.id);
+      response = responseItem?.answer;
+    } else {
+      response = responses[question.id];
+    }
+
+    if (response === undefined || response === null) return;
+
+    let userAnswer: number;
+    if (typeof response === 'string' && response.includes('Seçenek')) {
+      const optionMatch = response.match(/Seçenek ([A-D])/);
+      userAnswer = optionMatch ? optionMatch[1].charCodeAt(0) - 65 : 0;
+    } else {
+      userAnswer = parseInt(String(response)) || 0;
+    }
+
+    if (question.leadershipMapping && question.leadershipScoring) {
+      const leadershipType = question.leadershipMapping[userAnswer];
+      const scoring = question.leadershipScoring[userAnswer];
+      if (leadershipType && scoring?.points) {
+        leadershipTypeScores[leadershipType] = (leadershipTypeScores[leadershipType] || 0) + scoring.points;
       }
     }
   });
 
   const dominantLeadershipType = Object.entries(leadershipTypeScores)
-    .sort(([,a], [,b]) => b - a)[0]?.[0] || 'operasyonel-yetenek';
-
-  console.log('🎯 BACKEND Final scores:', {
-    totalScore: percentageScore,
-    categoryScores,
-    maxPossibleScore,
-    leadershipTypeScores,
-    dominantLeadershipType,
-    breakdownCount: detailedBreakdown.length
-  });
+    .sort(([, a], [, b]) => b - a)[0]?.[0] || 'operasyonel-yetenek';
 
   return {
     totalScore: percentageScore,

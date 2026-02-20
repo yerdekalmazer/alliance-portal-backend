@@ -42,4 +42,7 @@ router.post('/public/:linkId/submit', surveyController.submitPublicSurvey);
 router.post('/technical-assessment/generate', authMiddleware, surveyController.generateTechnicalAssessment);
 router.post('/technical-assessment/analyze', authMiddleware, surveyController.analyzeTechnicalAssessment);
 
+// Adaptive Assessment submission (public - for survey form submissions)
+router.post('/adaptive-assessment/submit', surveyController.submitSurveyResponse);
+
 export default router;
