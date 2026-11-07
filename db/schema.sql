@@ -147,3 +147,12 @@ CREATE TABLE IF NOT EXISTS case_team_members (
 );
 
 CREATE INDEX IF NOT EXISTS case_team_members_case_idx ON case_team_members(case_id);
+
+-- Supabase'te public şema REST API'den de açıktır; bu tablolara yalnızca backend
+-- (postgres rolü, RLS'ten muaf) erişsin diye RLS açık ve politika yok.
+ALTER TABLE users                 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE alliance_applications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE alliance_members      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ideas                 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cases                 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE case_team_members     ENABLE ROW LEVEL SECURITY;
