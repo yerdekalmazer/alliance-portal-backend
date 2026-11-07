@@ -1,191 +1,64 @@
-# Alliance Portal Backend
+# Alliance Portal — API
 
-Alliance Portal Backend API - Community-driven project development platform
+Alliance Network'ün sade akışı:
 
-## 🚀 Özellikler
+1. Kurum landing sayfasındaki formdan **başvurur**.
+2. Admin başvuruyu **onaylar** ("Şifre Belirle") → alliance üyesi (partner) hesabı açılır.
+3. Üye panelinden **fikir** gönderir (uzun form).
+4. Admin fikri onaylar ve **case'e dönüştürür**; case bilgilerini admin girer, ekibi case'in içinden kişi kişi ekler, süreci ve durum mesajını yönetir.
+5. Üye kendi fikirlerinin durumunu ve case'lerini görür.
 
-- **RESTful API**: Express.js ile modern API
-- **TypeScript**: Tip güvenliği ve developer experience
-- **Supabase**: PostgreSQL database ve authentication
-- **Güvenlik**: Helmet, CORS, Rate limiting
-- **Authentication**: JWT tabanlı kimlik doğrulama
-- **Role-based Access**: Admin, Alliance, User rolleri
-- **Comprehensive Logging**: Morgan ile detaylı loglar
+Anket, değerlendirme, takım oluşturma ve raporlama bu sürümde yok.
 
-## 📋 Gereksinimler
+## Teknoloji
 
-- Node.js >= 16.0.0
-- npm >= 8.0.0
-- Supabase account ve project
+Express 5 + TypeScript, Postgres (`pg`), JWT oturum, bcrypt şifre. Supabase ya da herhangi bir Postgres ile çalışır.
+Şema `db/schema.sql` içinde; sunucu her açılışta uygular (tüm ifadeler `IF NOT EXISTS`).
 
-## 🛠️ Kurulum
+| Tablo | İçerik |
+|---|---|
+| `users` | Admin ve alliance hesapları |
+| `alliance_applications` | Herkese açık başvurular |
+| `alliance_members` | Onaylanan kurumlar (bir kullanıcıya bağlı) |
+| `ideas` | Üyelerin fikirleri |
+| `cases` | Fikirden doğan case'ler (süreç adımı, durum mesajı dahil) |
+| `case_team_members` | Case ekibi (admin ekler) |
 
-1. **Bağımlılıkları yükle:**
+## Yerelde çalıştırma
+
 ```bash
+cp env.example .env   # DATABASE_URL, JWT_SECRET, ADMIN_EMAIL/ADMIN_PASSWORD doldurun
 npm install
+npm run dev           # http://localhost:3001
 ```
 
-2. **Environment variables ayarla:**
-```bash
-cp env.example .env
-```
+## Test
 
-`.env` dosyasını Supabase bilgilerinle düzenle:
-```
-PORT=3001
-NODE_ENV=development
-SUPABASE_URL=your_supabase_project_url
-SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-FRONTEND_URL=http://localhost:5173
-```
-
-3. **Supabase Database Schema:**
-`surec.md` dosyasındaki SQL scriptlerini Supabase SQL Editor'da çalıştır.
-
-## 🏃‍♂️ Çalıştırma
-
-### Development
-```bash
-npm run dev
-```
-
-### Production Build
-```bash
-npm run build
-npm start
-```
-
-### Type Check
-```bash
-npm run type-check
-```
-
-## 📁 Proje Yapısı
-
-```
-src/
-├── config/           # Configuration files
-│   └── database.ts   # Supabase configuration
-├── controllers/      # API route handlers
-│   ├── authController.ts
-│   ├── casesController.ts
-│   ├── surveyController.ts
-│   ├── analyticsController.ts
-│   └── ideasController.ts
-├── middleware/       # Express middleware
-│   ├── auth.ts       # Authentication middleware
-│   ├── errorHandler.ts
-│   └── notFound.ts
-├── models/           # Type definitions
-│   └── types.ts
-├── routes/           # API routes
-│   ├── auth.ts
-│   ├── cases.ts
-│   ├── surveys.ts
-│   ├── analytics.ts
-│   └── ideas.ts
-├── services/         # Business logic (coming soon)
-├── utils/            # Helper functions (coming soon)
-├── app.ts            # Express app configuration
-└── index.ts          # Server entry point
-```
-
-## 📡 API Endpoints
-
-### Authentication
-- `POST /api/auth/login` - User login
-- `POST /api/auth/register` - User registration
-- `GET /api/auth/profile` - Get user profile
-- `PUT /api/auth/profile` - Update profile
-- `POST /api/auth/logout` - Logout
-
-### Cases
-- `GET /api/cases` - List all cases
-- `POST /api/cases` - Create new case
-- `GET /api/cases/:id` - Get case details
-- `PUT /api/cases/:id` - Update case
-- `DELETE /api/cases/:id` - Delete case
-
-### Surveys
-- `GET /api/surveys/templates` - List survey templates
-- `POST /api/surveys/responses` - Submit survey response
-- `GET /api/surveys/public/:linkId` - Access public survey
-
-### Analytics
-- `GET /api/analytics/dashboard` - Dashboard statistics
-- `GET /api/analytics/cases/overview` - Cases overview
-
-### Ideas
-- `GET /api/ideas` - List ideas
-- `POST /api/ideas` - Submit new idea
-- `PUT /api/ideas/:id/status` - Update idea status
-
-## 🔐 Authentication
-
-Backend JWT token tabanlı authentication kullanır. Requests'lerde Authorization header gerekir:
-
-```
-Authorization: Bearer <your-jwt-token>
-```
-
-## 🛡️ Güvenlik
-
-- **Helmet**: HTTP headers güvenliği
-- **CORS**: Cross-origin resource sharing
-- **Rate Limiting**: IP bazlı rate limiting
-- **Input Validation**: Request validation (coming soon)
-- **SQL Injection Protection**: Supabase parameterized queries
-
-## 📊 Monitoring
-
-- **Health Check**: `GET /health`
-- **Logging**: Morgan middleware ile HTTP request logs
-- **Error Handling**: Centralized error handling
-
-## 🚀 Deployment
-
-### Environment Variables
-Production için gerekli environment variables:
-- `NODE_ENV=production`
-- `PORT=3001`
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `FRONTEND_URL`
-
-### Build Process
-```bash
-npm run build
-npm start
-```
-
-## 🧪 Testing
+Uçtan uca akış testi gerçek bir Postgres ister ve **o veritabanındaki tabloları siler**; yalnızca boş bir test veritabanıyla çalıştırın:
 
 ```bash
-npm test  # Tests coming soon
+TEST_DATABASE_URL=postgres://.../alliance_test npm test
 ```
 
-## 📈 Performance
+## Uçlar
 
-- **Compression**: Gzip compression
-- **Caching**: Database query optimization
-- **Connection Pooling**: Supabase connection management
+| Yöntem | Yol | Kim |
+|---|---|---|
+| POST | `/api/auth/login` | herkes |
+| GET `/me` · PUT `/profile` | `/api/auth` | giriş yapan ("Profil Bilgilerim", şifre değişikliği dahil) |
+| POST | `/api/alliance-applications` | herkes (saatte 10) |
+| GET · POST `:id/approve` · POST `:id/reject` · DELETE `:id` | `/api/alliance-applications` | admin |
+| GET · GET `:userId` · POST · PUT `:userId` · DELETE `:userId` | `/api/members` | admin ("Partner Ekle/Düzenle") |
+| POST | `/api/ideas` | alliance |
+| GET · GET `:id` | `/api/ideas` | admin hepsini, üye kendi fikirlerini |
+| PATCH `:id` · POST `:id/convert` · DELETE `:id` | `/api/ideas` | admin |
+| GET · GET `:id` · GET `:id/team` | `/api/cases` | admin hepsini, üye kendi case'lerini |
+| POST · PUT `:id` · PUT `:id/message` · PUT `:id/process` · DELETE `:id` | `/api/cases` | admin |
+| POST `:id/team` · PUT `:id/team/:memberId` · DELETE `:id/team/:memberId` | `/api/cases` | admin |
+| GET | `/api/stats` | admin |
 
-## 🤝 Katkıda Bulunma
+Şifreler en az 6 karakter (eski formlardaki kural). Üye; fikirlerdeki `admin_note` alanını ve ekip üyelerinin iletişim bilgilerini görmez.
 
-1. Fork this repository
-2. Create feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
-5. Open Pull Request
+## Render
 
-## 📝 License
-
-ISC License
-
-## 🆘 Yardım
-
-- **Documentation**: `surec.md` dosyasını incele
-- **Health Check**: `http://localhost:3001/health`
-- **API Test**: Postman/Insomnia ile endpoints'leri test et
+`render.yaml` Blueprint'tir. Render panelinde *New → Blueprint* ile bu repoyu seçin, `DATABASE_URL`, `ALLOWED_ORIGINS`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` değerlerini girin. Supabase kullanılıyorsa **Session pooler** adresini verin (direct host yalnızca IPv6, Render'dan erişilemez).
