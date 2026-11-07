@@ -20,9 +20,9 @@ services:
         value: "1"
       - key: JWT_SECRET
         generateValue: true
-      # Frontend adres(ler)i, virgülle: https://alliance-portal.onrender.com
+      # Frontend adres(ler)i, virgülle
       - key: ALLOWED_ORIGINS
-        sync: false
+        value: https://alliance-portal-thtd.onrender.com
       # İlk açılışta bu e-postayla admin hesabı yoksa oluşturulur
       - key: ADMIN_EMAIL
         sync: false
